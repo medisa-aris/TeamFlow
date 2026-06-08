@@ -2,17 +2,38 @@
    TeamFlow — pages 2: Approval, Users, Laporan, Settings, AddTodo
    ============================================================ */
 
+/* ---------- shared helpers ---------- */
+function validatePw(pw) {
+  if (!pw) return null;
+  if (pw.length < 8) return "Minimal 8 karakter";
+  if (!/[A-Z]/.test(pw)) return "Harus ada huruf kapital";
+  if (!/[0-9]/.test(pw)) return "Harus ada angka";
+  return null;
+}
+
 /* ---------- ADD / EDIT TODO PANEL ---------- */
+const MIN_DESC_WORDS = 20;
+function countWords(str) {
+  return str.trim().split(/\s+/).filter(Boolean).length;
+}
+
 const AddTodoPanel = () => {
   const { addPanel, closeAdd, submitTodo, hoursUsed } = useApp();
   const editing = addPanel.mode === "edit";
   const [title, setTitle] = useState(addPanel.todo?.title || "");
   const [desc, setDesc] = useState(addPanel.todo?.desc || "");
   const [est, setEst] = useState(addPanel.todo?.est || 0.5);
+  const [descTouched, setDescTouched] = useState(false);
+
   const remaining = Math.max(0, 8 - hoursUsed);
   const projected = hoursUsed + Number(est);
   const over = projected > 8;
-  const valid = title.trim().length > 0;
+
+  const wordCount = countWords(desc);
+  const descOk = wordCount >= MIN_DESC_WORDS;
+  const descWarn = descTouched && !descOk;
+  const valid = title.trim().length > 0 && descOk;
+
   return (
     <Panel
       title={editing ? "Edit & Resubmit" : "Tambah Todo Baru"}
@@ -29,9 +50,31 @@ const AddTodoPanel = () => {
       <Field label="Judul" req>
         <TextBox value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Desain halaman dashboard..." autoFocus />
       </Field>
-      <Field label="Deskripsi">
-        <TextArea value={desc} onChange={(e) => setDesc(e.target.value)}
-                  placeholder="Buat wireframe dan implementasi komponen..." rows={4} />
+      <Field label="Deskripsi" req hint={`Minimal ${MIN_DESC_WORDS} kata agar todo jelas dipahami`}>
+        <TextArea
+          value={desc}
+          onChange={(e) => setDesc(e.target.value)}
+          onBlur={() => setDescTouched(true)}
+          placeholder="Jelaskan secara rinci apa yang akan dikerjakan, langkah-langkahnya, tools yang digunakan, dan hasil yang diharapkan..."
+          rows={5}
+          style={descWarn ? { borderColor: "#c8650a", boxShadow: "0 0 0 2px rgba(200,101,10,.2)" } : {}}
+        />
+        <div className="row gap8 mt4" style={{ justifyContent: "space-between" }}>
+          {descWarn ? (
+            <div className="row gap6" style={{ color: "#c8650a", fontSize: 12 }}>
+              <Icons.Warning size={13} />
+              <span>Deskripsi terlalu singkat — perlu {MIN_DESC_WORDS - wordCount} kata lagi</span>
+            </div>
+          ) : descOk ? (
+            <div className="row gap6" style={{ color: "#0f7b3f", fontSize: 12 }}>
+              <Icons.CheckCircle size={13} />
+              <span>Deskripsi cukup detail</span>
+            </div>
+          ) : (
+            <span />
+          )}
+          <span className="t-caption dim2">{wordCount}/{MIN_DESC_WORDS} kata</span>
+        </div>
       </Field>
       <Field label="Estimasi Waktu" req hint="Pilih 0.5 / 1 / 1.5 / 2 jam">
         <Select value={est} onChange={(e) => setEst(e.target.value)}>
@@ -234,10 +277,15 @@ const UserManagement = () => {
 };
 
 const UserEditDialog = ({ user, onClose, onSave }) => {
-  const [f, setF] = useState({ password: "", ...user });
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const [f, setF] = useState({ password: "", confirmPw: "", ...user });
+  const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
   const isNew = !!user._new;
-  const valid = f.name.trim() && f.email.trim() && (!isNew || f.password.length >= 8);
+
+  const pwErr = validatePw(f.password);
+  const pwMismatch = f.password && f.confirmPw && f.password !== f.confirmPw;
+  const pwRequiredOk = isNew ? (f.password.length >= 8 && !pwErr) : (!f.password || (!pwErr && !pwMismatch));
+  const valid = f.name.trim() && f.email.trim() && pwRequiredOk && !pwMismatch;
+
   return (
     <Dialog title={isNew ? "Tambah User" : "Edit User"} width={460}
       icon={<span style={{ color: "var(--accent)" }}>{isNew ? <Icons.Plus size={20} /> : <Icons.Edit size={20} />}</span>}
@@ -254,9 +302,6 @@ const UserEditDialog = ({ user, onClose, onSave }) => {
         <Field label="Role">
           <Select value={f.role} onChange={set("role")}><option>Member</option><option>CEO</option></Select>
         </Field>
-        <Field label="Password" req hint="Min. 8 karakter, huruf besar & angka">
-          <TextBox type="password" value={f.password} onChange={set("password")} placeholder="••••••••" />
-        </Field>
       </>}
       {!isNew && <>
         <Field label="Email">
@@ -265,10 +310,38 @@ const UserEditDialog = ({ user, onClose, onSave }) => {
         <Field label="Status">
           <Select value={f.status} onChange={set("status")}><option>Aktif</option><option>Nonaktif</option></Select>
         </Field>
-        <div className="muted-box t-caption dim">
-          <Icons.Info size={13} style={{ marginRight: 6 }} />Email dan role tidak dapat diubah setelah dibuat.
-        </div>
       </>}
+
+      {/* Password section — required for new, optional for edit */}
+      <div className="hr" style={{ margin: "14px 0 16px" }} />
+      <div className="t-caption dim" style={{ marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
+        <Icons.Lock size={13} />
+        {isNew ? "Password akun" : "Reset password (kosongkan jika tidak ingin mengubah)"}
+      </div>
+      <Field label={isNew ? "Password" : "Password Baru"} req={isNew}
+             hint="Min. 8 karakter, 1 huruf kapital, 1 angka">
+        <TextBox type="password" value={f.password} onChange={set("password")} placeholder="••••••••"
+          style={pwErr && f.password ? { borderColor: "#c42b1c" } : {}} />
+        {pwErr && f.password && (
+          <div className="row gap6 mt4" style={{ color: "#c42b1c", fontSize: 12 }}>
+            <Icons.XCircle size={13} />{pwErr}
+          </div>
+        )}
+      </Field>
+      <Field label="Konfirmasi Password" req={isNew}>
+        <TextBox type="password" value={f.confirmPw} onChange={set("confirmPw")} placeholder="••••••••"
+          style={pwMismatch ? { borderColor: "#c42b1c" } : {}} />
+        {pwMismatch && (
+          <div className="row gap6 mt4" style={{ color: "#c42b1c", fontSize: 12 }}>
+            <Icons.XCircle size={13} />Password tidak cocok
+          </div>
+        )}
+      </Field>
+      {!isNew && (
+        <div className="muted-box t-caption dim row gap8">
+          <Icons.Info size={13} />Email dan role tidak dapat diubah setelah dibuat.
+        </div>
+      )}
     </Dialog>
   );
 };
@@ -366,6 +439,17 @@ const Settings = () => {
   const [fname, setFname] = useState(me?.name || "");
   const [saving, setSaving] = useState(false);
 
+  // change-password state
+  const [curPw, setCurPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [pwSaving, setPwSaving] = useState(false);
+  const [showPw, setShowPw] = useState(false);
+
+  const pwErr = validatePw(newPw);
+  const pwMismatch = newPw && confirmPw && newPw !== confirmPw;
+  const pwValid = curPw && newPw && confirmPw && !pwErr && !pwMismatch;
+
   const saveProfile = async () => {
     setSaving(true);
     try {
@@ -375,6 +459,18 @@ const Settings = () => {
       pushToast("err", "Gagal menyimpan", e.message);
     }
     setSaving(false);
+  };
+
+  const savePassword = async () => {
+    setPwSaving(true);
+    try {
+      await window.API.Auth.changePassword(curPw, newPw);
+      pushToast("ok", "Password berhasil diubah", "Silakan login ulang di perangkat lain");
+      setCurPw(""); setNewPw(""); setConfirmPw("");
+    } catch (e) {
+      pushToast("err", "Gagal mengubah password", e.message);
+    }
+    setPwSaving(false);
   };
 
   return (
@@ -415,6 +511,47 @@ const Settings = () => {
             <Toggle on={notif[r.k]} onChange={(v) => setNotif({ ...notif, [r.k]: v })} />
           </div>
         ))}
+      </Card>
+
+      <SectionLabel><Icons.Lock size={13} /> Ganti Password</SectionLabel>
+      <Card>
+        <div className="row gap8" style={{ marginBottom: 14, alignItems: "center", justifyContent: "space-between" }}>
+          <span className="t-caption dim">Gunakan password kuat — min. 8 karakter, 1 huruf kapital, 1 angka</span>
+          <HBtn title={showPw ? "Sembunyikan" : "Tampilkan"} onClick={() => setShowPw(!showPw)} style={{ width: 28, height: 28 }}>
+            {showPw ? <Icons.EyeOff size={14} /> : <Icons.Eye size={14} />}
+          </HBtn>
+        </div>
+        <Field label="Password Saat Ini" req>
+          <TextBox type={showPw ? "text" : "password"} value={curPw} onChange={(e) => setCurPw(e.target.value)} placeholder="••••••••" />
+        </Field>
+        <Field label="Password Baru" req hint="Min. 8 karakter, 1 huruf kapital, 1 angka">
+          <TextBox type={showPw ? "text" : "password"} value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="••••••••"
+            style={pwErr && newPw ? { borderColor: "#c42b1c" } : newPw && !pwErr ? { borderColor: "#0f7b3f" } : {}} />
+          {pwErr && newPw && (
+            <div className="row gap6 mt4" style={{ color: "#c42b1c", fontSize: 12 }}>
+              <Icons.XCircle size={13} />{pwErr}
+            </div>
+          )}
+        </Field>
+        <Field label="Konfirmasi Password Baru" req>
+          <TextBox type={showPw ? "text" : "password"} value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} placeholder="••••••••"
+            style={pwMismatch ? { borderColor: "#c42b1c" } : confirmPw && !pwMismatch ? { borderColor: "#0f7b3f" } : {}} />
+          {pwMismatch && (
+            <div className="row gap6 mt4" style={{ color: "#c42b1c", fontSize: 12 }}>
+              <Icons.XCircle size={13} />Password tidak cocok
+            </div>
+          )}
+          {confirmPw && !pwMismatch && newPw && !pwErr && (
+            <div className="row gap6 mt4" style={{ color: "#0f7b3f", fontSize: 12 }}>
+              <Icons.CheckCircle size={13} />Password cocok
+            </div>
+          )}
+        </Field>
+        <div className="row" style={{ justifyContent: "flex-end" }}>
+          <Btn variant="accent" disabled={!pwValid || pwSaving} icon={<Icons.Lock size={15} />} onClick={savePassword}>
+            {pwSaving ? "Menyimpan..." : "Ubah Password"}
+          </Btn>
+        </div>
       </Card>
 
       <SectionLabel><Icons.Clock size={13} /> Zona Waktu</SectionLabel>

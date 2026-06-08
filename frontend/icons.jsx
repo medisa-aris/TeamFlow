@@ -41,6 +41,8 @@ const Icons = {
   Logout: (p) => <Ic {...p}><path d="M14 5h4a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-4"/><path d="M10 12H3M6 8l-3 4 3 4"/></Ic>,
   Mail: (p) => <Ic {...p}><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4 7 8 6 8-6"/></Ic>,
   Lock: (p) => <Ic {...p}><rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></Ic>,
+  Eye: (p) => <Ic {...p}><ellipse cx="12" cy="12" rx="8" ry="5"/><circle cx="12" cy="12" r="2.5"/></Ic>,
+  EyeOff: (p) => <Ic {...p}><path d="M3 3l18 18M10.5 10.7A3 3 0 0 0 13.3 13.5"/><path d="M6.3 6.5C4.5 7.8 3 9.8 3 12c0 3.3 4 7 9 7a9.6 9.6 0 0 0 5.7-1.9M9.5 4.4A9.1 9.1 0 0 1 12 4c5 0 9 3.7 9 8 0 1.4-.5 2.8-1.4 4"/></Ic>,
   Users3: (p) => <Ic {...p}><circle cx="12" cy="8" r="3"/><path d="M6 19c0-3.3 2.7-6 6-6s6 2.7 6 6"/></Ic>,
   Hourglass: (p) => <Ic {...p}><path d="M7 4h10M7 20h10M8 4c0 4 8 4 8 8s-8 4-8 8M16 4c0 4-8 4-8 8s8 4 8 8"/></Ic>,
   Refresh: (p) => <Ic {...p}><path d="M20 11a8 8 0 0 0-14-4.5L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14 4.5L20 16"/><path d="M20 20v-4h-4"/></Ic>,

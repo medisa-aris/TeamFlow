@@ -27,7 +27,15 @@ export class UsersService {
 
   async update(id: string, dto: UpdateUserDto) {
     await this.findOneOrFail(id);
-    const user = await this.prisma.user.update({ where: { id }, data: dto });
+
+    const { password, ...rest } = dto;
+    const data: any = { ...rest };
+
+    if (password) {
+      data.passwordHash = await bcrypt.hash(password, 12);
+    }
+
+    const user = await this.prisma.user.update({ where: { id }, data });
     return this.toSafeUser(user);
   }
 

@@ -1,7 +1,9 @@
 import {
   Injectable,
   UnauthorizedException,
-  TooManyRequestsException,
+  BadRequestException,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -30,7 +32,7 @@ export class AuthService {
     if (!user) throw new UnauthorizedException('Invalid credentials');
 
     if (user.lockedUntil && user.lockedUntil > new Date()) {
-      throw new TooManyRequestsException('Account is temporarily locked. Try again later.');
+      throw new HttpException('Account is temporarily locked. Try again later.', HttpStatus.TOO_MANY_REQUESTS);
     }
 
     const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
@@ -87,6 +89,27 @@ export class AuthService {
 
     const accessToken = this.signAccessToken(matched.user);
     return { accessToken };
+  }
+
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+    const user = await this.prisma.user.findFirst({ where: { id: userId, isActive: true } });
+    if (!user) throw new UnauthorizedException('User tidak ditemukan');
+
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) throw new BadRequestException('Password lama tidak sesuai');
+
+    if (currentPassword === newPassword) {
+      throw new BadRequestException('Password baru tidak boleh sama dengan password lama');
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+
+    // Revoke all existing refresh tokens so user must re-login on other devices
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   }
 
   async logout(rawToken: string): Promise<void> {

@@ -101,6 +101,13 @@ window.API = {
       }
       return res.json();
     },
+    async changePassword(currentPassword, newPassword) {
+      const res = await apiFetch("/auth/change-password", {
+        method: "PATCH",
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      return res.json();
+    },
     async logout(refreshToken) {
       try {
         if (refreshToken) {
@@ -178,6 +185,8 @@ window.API = {
       if (data.name !== undefined) body.fullName = data.name;
       if (data.isActive !== undefined) body.isActive = data.isActive;
       else if (data.status !== undefined) body.isActive = data.status === "Aktif";
+      // include password only if provided (admin reset)
+      if (data.password && data.password.trim()) body.password = data.password;
       return apiPatch(`/users/${id}`, body);
     },
   },
