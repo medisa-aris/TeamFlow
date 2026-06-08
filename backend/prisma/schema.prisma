@@ -1,0 +1,227 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  MEMBER
+  CEO
+
+  @@map("user_role")
+}
+
+enum TodoStatus {
+  PENDING_APPROVAL
+  PENDING_OVERTIME_APPROVAL
+  APPROVED
+  AUTO_APPROVED
+  REJECTED
+  ONGOING
+  PAUSED
+  DONE
+
+  @@map("todo_status")
+}
+
+enum TodoTrigger {
+  USER
+  SYSTEM
+  CEO
+  DELEGATE
+
+  @@map("todo_trigger")
+}
+
+enum ApprovalAction {
+  APPROVED
+  REJECTED
+  AUTO_APPROVED
+
+  @@map("approval_action")
+}
+
+enum NotificationType {
+  TODO_PENDING_APPROVAL
+  TODO_APPROVED
+  TODO_AUTO_APPROVED
+  TODO_REJECTED
+  DELEGATION_CREATED
+  DELEGATION_REVOKED
+
+  @@map("notification_type")
+}
+
+model User {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email                  String    @db.VarChar(255)
+  fullName               String    @map("full_name") @db.VarChar(255)
+  passwordHash           String    @map("password_hash") @db.VarChar(255)
+  role                   UserRole  @default(MEMBER)
+  isActive               Boolean   @default(true) @map("is_active")
+  failedLoginAttempts    Int       @default(0) @map("failed_login_attempts")
+  lockedUntil            DateTime? @map("locked_until") @db.Timestamptz
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt              DateTime? @map("deleted_at") @db.Timestamptz
+
+  refreshTokens            RefreshToken[]
+  todos                    Todo[]
+  requestorDelegations     ApprovalDelegation[] @relation("RequestorDelegations")
+  delegateDelegations      ApprovalDelegation[] @relation("DelegateDelegations")
+  delegatedByDelegations   ApprovalDelegation[] @relation("DelegatedByDelegations")
+  todoEvents               TodoEvent[]
+  approvalLogs             ApprovalLog[]
+  sentNotifications        Notification[]       @relation("ActorNotifications")
+  receivedNotifications    Notification[]       @relation("RecipientNotifications")
+
+  @@map("users")
+}
+
+model ApprovalDelegation {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requestorUserId    String    @map("requestor_user_id") @db.Uuid
+  delegateUserId     String    @map("delegate_user_id") @db.Uuid
+  delegatedByUserId  String    @map("delegated_by_user_id") @db.Uuid
+  activeFrom         DateTime  @default(now()) @map("active_from") @db.Timestamptz
+  activeUntil        DateTime? @map("active_until") @db.Timestamptz
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt          DateTime? @map("deleted_at") @db.Timestamptz
+
+  requestor   User @relation("RequestorDelegations", fields: [requestorUserId], references: [id])
+  delegate    User @relation("DelegateDelegations", fields: [delegateUserId], references: [id])
+  delegatedBy User @relation("DelegatedByDelegations", fields: [delegatedByUserId], references: [id])
+
+  @@index([requestorUserId], name: "idx_delegations_requestor")
+  @@index([delegateUserId], name: "idx_delegations_delegate")
+  @@map("approval_delegations")
+}
+
+model RefreshToken {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @map("token_hash") @db.VarChar(255)
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt  DateTime? @map("deleted_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], name: "idx_refresh_tokens_user_id")
+  @@index([expiresAt], name: "idx_refresh_tokens_expires_at")
+  @@map("refresh_tokens")
+}
+
+model Todo {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String     @map("user_id") @db.Uuid
+  title          String     @db.VarChar(255)
+  description    String?    @db.Text
+  estimatedHours Decimal    @map("estimated_hours") @db.Decimal(3, 1)
+  status         TodoStatus @default(PENDING_APPROVAL)
+  isOvertime     Boolean    @default(false) @map("is_overtime")
+  todoDate       DateTime   @default(dbgenerated("CURRENT_DATE")) @map("todo_date") @db.Date
+  totalSeconds   Int?       @map("total_seconds")
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime?  @map("deleted_at") @db.Timestamptz
+
+  user         User          @relation(fields: [userId], references: [id])
+  sessions     TodoSession[]
+  events       TodoEvent[]
+  approvalLogs ApprovalLog[]
+  notifications Notification[]
+
+  @@index([userId], name: "idx_todos_user_id")
+  @@index([status], name: "idx_todos_status")
+  @@index([todoDate], name: "idx_todos_todo_date")
+  @@index([userId, todoDate], name: "idx_todos_user_date")
+  @@map("todos")
+}
+
+model TodoSession {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  todoId         String    @map("todo_id") @db.Uuid
+  startedAt      DateTime  @map("started_at") @db.Timestamptz
+  pausedAt       DateTime? @map("paused_at") @db.Timestamptz
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz
+  elapsedSeconds Int?      @map("elapsed_seconds")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
+
+  todo Todo @relation(fields: [todoId], references: [id], onDelete: Cascade)
+
+  @@index([todoId], name: "idx_todo_sessions_todo_id")
+  @@map("todo_sessions")
+}
+
+model TodoEvent {
+  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  todoId      String       @map("todo_id") @db.Uuid
+  actorUserId String?      @map("actor_user_id") @db.Uuid
+  fromStatus  TodoStatus?  @map("from_status")
+  toStatus    TodoStatus   @map("to_status")
+  triggeredBy TodoTrigger  @default(USER) @map("triggered_by")
+  note        String?      @db.Text
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime?    @map("deleted_at") @db.Timestamptz
+
+  todo  Todo  @relation(fields: [todoId], references: [id], onDelete: Cascade)
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([todoId], name: "idx_todo_events_todo_id")
+  @@index([actorUserId], name: "idx_todo_events_actor")
+  @@index([createdAt], name: "idx_todo_events_created_at")
+  @@map("todo_events")
+}
+
+model ApprovalLog {
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  todoId           String         @map("todo_id") @db.Uuid
+  actorUserId      String?        @map("actor_user_id") @db.Uuid
+  action           ApprovalAction
+  reason           String?        @db.Text
+  isDelegateAction Boolean        @default(false) @map("is_delegate_action")
+  actionedAt       DateTime       @default(now()) @map("actioned_at") @db.Timestamptz
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime?      @map("deleted_at") @db.Timestamptz
+
+  todo  Todo  @relation(fields: [todoId], references: [id], onDelete: Cascade)
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([todoId], name: "idx_approval_logs_todo_id")
+  @@index([actorUserId], name: "idx_approval_logs_actor")
+  @@index([actionedAt], name: "idx_approval_logs_actioned_at")
+  @@map("approval_logs")
+}
+
+model Notification {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recipientUserId String           @map("recipient_user_id") @db.Uuid
+  actorUserId     String?          @map("actor_user_id") @db.Uuid
+  todoId          String?          @map("todo_id") @db.Uuid
+  type            NotificationType
+  title           String           @db.VarChar(255)
+  body            String           @db.Text
+  readAt          DateTime?        @map("read_at") @db.Timestamptz
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt       DateTime?        @map("deleted_at") @db.Timestamptz
+
+  recipient User  @relation("RecipientNotifications", fields: [recipientUserId], references: [id], onDelete: Cascade)
+  actor     User? @relation("ActorNotifications", fields: [actorUserId], references: [id], onDelete: SetNull)
+  todo      Todo? @relation(fields: [todoId], references: [id], onDelete: SetNull)
+
+  @@index([recipientUserId], name: "idx_notifications_recipient")
+  @@index([createdAt], name: "idx_notifications_created_at")
+  @@map("notifications")
+}
