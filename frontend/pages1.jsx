@@ -126,11 +126,27 @@ const TeamHourRow = ({ p }) => {
 };
 
 const Dashboard = () => {
-  const { team, week, todos, approvals, users, role } = useApp();
-  const ongoing = team.filter((t) => t.status === "ongoing").length;
-  const doneCount = todos.filter((t) => t.state === "done").length;
+  const { team, week, todos, approvals, users, role, me } = useApp();
+  const isCEO = role === "CEO";
   const today = new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-  const pending = approvals.length;
+
+  // CEO: team-wide counts; Member: hanya todo milik user login
+  const ongoing = isCEO
+    ? team.filter((t) => t.status === "ongoing").length
+    : todos.filter((t) => t.state === "ongoing").length;
+
+  const doneCount = todos.filter((t) => t.state === "done").length;
+
+  const pending = isCEO
+    ? approvals.length
+    : todos.filter((t) => t.state === "waiting").length;
+
+  const totalMembers = users.length || team.length || "—";
+
+  // Data baris tim untuk member (filter ke user login saja)
+  const myTeamRow = !isCEO ? team.find((t) => t.userId === me?.id) : null;
+  const myHoursWorked = myTeamRow?.used ?? 0;
+  const teamDisplay = isCEO ? team : (myTeamRow ? [myTeamRow] : []);
 
   return (
     <div className="content-pad page-enter">
@@ -142,27 +158,54 @@ const Dashboard = () => {
       </div>
 
       <div className="stat-grid">
-        <StatCard label="Total Anggota" value={users.length || team.length || "—"} sub="pengguna aktif" Icon={Icons.Users3} tone="var(--accent)" />
-        <StatCard label="Ongoing Sekarang" value={ongoing} sub="sedang bekerja" Icon={Icons.Refresh} tone="#2b9d6b" />
-        <StatCard label="Menunggu Approval" value={role === "CEO" ? pending : "—"} sub="batas 09:00" Icon={Icons.Hourglass} tone="#c8650a" />
+        <StatCard label="Total Anggota" value={totalMembers} sub="pengguna aktif" Icon={Icons.Users3} tone="var(--accent)" />
+        <StatCard
+          label="Ongoing Sekarang"
+          value={ongoing}
+          sub={isCEO ? "sedang bekerja" : "todo berjalan"}
+          Icon={Icons.Refresh}
+          tone="#2b9d6b"
+        />
+        <StatCard
+          label="Menunggu Approval"
+          value={pending}
+          sub={isCEO ? "batas 09:00" : "menunggu CEO"}
+          Icon={Icons.Hourglass}
+          tone="#c8650a"
+        />
         <StatCard label="Selesai Hari Ini" value={doneCount} sub="todo tuntas" Icon={Icons.CheckCircle} tone="#0f7b3f" />
+        {!isCEO && (
+          <StatCard
+            label="Jam Kerja Hari Ini"
+            value={`${myHoursWorked}j`}
+            sub="dari 8 jam target"
+            Icon={Icons.Clock}
+            tone="var(--accent)"
+          />
+        )}
       </div>
 
       <div className="two-col" style={{ marginTop: 24 }}>
         <Card>
           <div className="row" style={{ marginBottom: 6 }}>
-            <div className="t-subtitle" style={{ flex: 1 }}>Jam Kerja Tim Hari Ini</div>
+            <div className="t-subtitle" style={{ flex: 1 }}>
+              {isCEO ? "Jam Kerja Tim Hari Ini" : "Jam Kerja Saya Hari Ini"}
+            </div>
             <span className="pulse-dot" />
           </div>
           <div className="hr" style={{ margin: "6px 0 4px" }} />
           {team.length === 0
             ? <div className="dim t-caption" style={{ padding: "12px 0" }}>Memuat data...</div>
-            : team.map((p) => <TeamHourRow key={p.first} p={p} />)}
+            : teamDisplay.length === 0
+              ? <div className="dim t-caption" style={{ padding: "12px 0" }}>Data belum tersedia</div>
+              : teamDisplay.map((p) => <TeamHourRow key={p.userId || p.first} p={p} />)}
         </Card>
 
         <Card>
           <div className="t-subtitle" style={{ marginBottom: 4 }}>7 Hari Terakhir</div>
-          <div className="dim t-caption" style={{ marginBottom: 8 }}>Total jam kerja tim per hari</div>
+          <div className="dim t-caption" style={{ marginBottom: 8 }}>
+            {isCEO ? "Total jam kerja tim per hari" : "Total jam kerja tim per hari"}
+          </div>
           {week.length > 0
             ? <AnimatedBars data={week} max={Math.max(...week.map((d) => d.v), 1)} />
             : <div className="dim t-caption" style={{ padding: "20px 0" }}>Memuat grafik...</div>}

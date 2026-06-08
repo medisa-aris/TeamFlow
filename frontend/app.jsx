@@ -126,7 +126,7 @@ const App = () => {
   const loadNotifications = useCallback(async () => {
     try {
       const raw = await window.API.Notifications.list();
-      setNotifications(raw || []);
+      setNotifications(Array.isArray(raw) ? raw : (raw?.notifications ?? []));
     } catch (e) { console.error("loadNotifications", e); }
   }, []);
 
