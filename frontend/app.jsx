@@ -44,6 +44,8 @@ const App = () => {
 
   /* --- data --- */
   const [todos, setTodos] = useState([]);
+  const [archived, setArchived] = useState([]);
+  const [systemConfig, setSystemConfig] = useState({ approvalDeadlineHour: 9 });
   const [team, setTeam] = useState([]);
   const [week, setWeek] = useState([]);
   const [approvals, setApprovals] = useState([]);
@@ -123,6 +125,20 @@ const App = () => {
     } catch (e) { console.error("loadUsers", e); }
   }, []);
 
+  const loadSystemConfig = useCallback(async () => {
+    try {
+      const cfg = await window.API.SystemConfig.get();
+      if (cfg) setSystemConfig(cfg);
+    } catch (e) { console.error("loadSystemConfig", e); }
+  }, []);
+
+  const loadArchived = useCallback(async () => {
+    try {
+      const raw = await window.API.Todos.archived();
+      setArchived((raw || []).map(window.TF.mapTodo));
+    } catch (e) { console.error("loadArchived", e); }
+  }, []);
+
   const loadNotifications = useCallback(async () => {
     try {
       const raw = await window.API.Notifications.list();
@@ -163,6 +179,11 @@ const App = () => {
     ]);
   }, [loadTodos, loadDashboard, loadNotifications, loadApprovals, loadUsers, isCEO]);
 
+  /* ---------- on login: also load system config ---------- */
+  useEffect(() => {
+    if (loggedIn && me) loadSystemConfig();
+  }, [loggedIn, me?.id]);
+
   /* ---------- on login ---------- */
   useEffect(() => {
     if (!loggedIn || !me) return;
@@ -173,11 +194,16 @@ const App = () => {
     window.API.SSE.connect((ev) => {
       if (!ev?.type) return;
       if (ev.type.startsWith("todo")) { loadTodos(); loadDashboard(); }
-      if (ev.type.startsWith("notification")) loadNotifications();
+      if (ev.type.startsWith("notification")) {
+        loadNotifications();
+        loadTodos();
+        loadDashboard();
+        if (isCEO) loadApprovals();
+      }
     });
 
-    /* 30s polling */
-    pollingRef.current = setInterval(refresh, 30000);
+    /* 15s polling */
+    pollingRef.current = setInterval(refresh, 15000);
 
     return () => {
       window.API.SSE.disconnect();
@@ -188,6 +214,11 @@ const App = () => {
   /* ---------- load report when navigating to laporan --- */
   useEffect(() => {
     if (route === "laporan" && loggedIn) loadReport();
+  }, [route, loggedIn]);
+
+  /* ---------- load archived when navigating to selesai --- */
+  useEffect(() => {
+    if (route === "selesai" && loggedIn) loadArchived();
   }, [route, loggedIn]);
 
   /* ---------- auth actions ---------- */
@@ -216,7 +247,7 @@ const App = () => {
     await window.API.Auth.logout(rt);
     setLoggedIn(false);
     setMe(null);
-    setTodos([]); setTeam([]); setWeek([]);
+    setTodos([]); setArchived([]); setTeam([]); setWeek([]);
     setApprovals([]); setUsers([]); setNotifications([]);
     setReportDetail([]); setReport([]);
     setRoute("dashboard");
@@ -254,15 +285,42 @@ const App = () => {
   const submitTodo = async (data, editing) => {
     try {
       if (editing && data.id) {
-        /* No update endpoint; re-create via reject+create — just create new */
-        await window.API.Todos.create(data);
+        await window.API.Todos.update(data.id, data);
+        pushToast("ok", "Todo diperbarui", "Menunggu approval ulang CEO");
+      } else if (isCEO && data.targetMemberId) {
+        await window.API.Todos.createForMember(data.targetMemberId, data);
+        pushToast("ok", "Todo dibuat untuk anggota", "Auto-approved");
       } else {
         await window.API.Todos.create(data);
+        pushToast("ok", "Todo diajukan", "Menunggu approval CEO");
       }
       setAddPanel(null);
       await loadTodos();
-      pushToast("ok", "Todo diajukan", "Menunggu approval CEO");
-    } catch (e) { pushToast("err", "Gagal membuat todo", e.message); }
+    } catch (e) { pushToast("err", "Gagal menyimpan todo", e.message); }
+  };
+
+  const deleteTodo = async (id) => {
+    try {
+      await window.API.Todos.delete(id);
+      await loadTodos();
+      pushToast("ok", "Todo dihapus");
+    } catch (e) { pushToast("err", "Gagal menghapus todo", e.message); }
+  };
+
+  const archiveTodo = async (id) => {
+    try {
+      await window.API.Todos.archive(id);
+      await Promise.all([loadTodos(), loadArchived()]);
+      pushToast("ok", "Todo diarsipkan", "Tersimpan di halaman Selesai");
+    } catch (e) { pushToast("err", "Gagal mengarsipkan todo", e.message); }
+  };
+
+  const carryOverTodo = async (id) => {
+    try {
+      await window.API.Todos.carryOver(id);
+      await loadTodos();
+      pushToast("ok", "Todo diteruskan ke hari kerja berikutnya");
+    } catch (e) { pushToast("err", "Gagal meneruskan todo", e.message); }
   };
 
   const openAdd = () => setAddPanel({ mode: "add", todo: null });
@@ -320,13 +378,14 @@ const App = () => {
   /* ---------- notifications ---------- */
   const markNotifRead = useCallback(async (id) => {
     try {
-      await window.API.Notifications.markRead(id);
-      setNotifications((p) => p.map((n) => n.id === id ? { ...n, readAt: new Date().toISOString() } : n));
+      await window.API.Notifications.delete(id);
+      setNotifications((p) => p.filter((n) => n.id !== id));
     } catch { /* ignore */ }
   }, []);
 
   const unreadCount = notifications.filter((n) => !n.readAt).length;
   const pendingCount = approvals.length;
+  const pendingMemberCount = todos.filter((t) => t.state === "waiting" || t.state === "rejected").length;
 
   /* ---------- derived --- */
   const hoursUsed = todos
@@ -336,16 +395,16 @@ const App = () => {
   /* ---------- render ---------- */
   const ctx = {
     /* auth */
-    loggedIn, me, role, login, logout,
+    loggedIn, me, role, isCEO, login, logout,
     /* ui */
     route, go, compact, toggleRail,
     theme, setTheme,
     notifOpen, setNotifOpen,
     /* data */
-    todos, team, week, approvals, processed,
-    users, notifications, reportDetail, report,
+    todos, archived, team, week, approvals, processed,
+    users, notifications, reportDetail, report, systemConfig,
     /* counts */
-    unreadCount, pendingCount,
+    unreadCount, pendingCount, pendingMemberCount,
     /* add panel */
     addPanel, openAdd, closeAdd, hoursUsed,
     /* notif prefs */
@@ -354,6 +413,7 @@ const App = () => {
     routeParam,
     /* actions */
     startTodo, pauseTimer, finishTodo, submitTodo,
+    deleteTodo, archiveTodo, carryOverTodo,
     decideApproval, saveUser, deleteUser,
     markNotifRead, elapsed,
     /* add/edit */
@@ -374,11 +434,14 @@ const App = () => {
   const PAGE = {
     dashboard: Dashboard,
     mytodo: MyTodo,
+    pending: PendingApproval,
+    selesai: Selesai,
     detail: TodoDetail,
     approval: ApprovalQueue,
     laporan: Laporan,
     users: UserManagement,
     settings: Settings,
+    help: Help,
   };
 
   const Page = PAGE[route] || Dashboard;

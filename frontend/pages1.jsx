@@ -145,8 +145,10 @@ const Dashboard = () => {
 
   // Data baris tim untuk member (filter ke user login saja)
   const myTeamRow = !isCEO ? team.find((t) => t.userId === me?.id) : null;
-  const myHoursWorked = myTeamRow?.used ?? 0;
+  const myHoursApproved = myTeamRow?.approved ?? 0;
   const teamDisplay = isCEO ? team : (myTeamRow ? [myTeamRow] : []);
+
+  const teamWeekTotal = Math.round(week.reduce((s, d) => s + d.v, 0) * 10) / 10;
 
   return (
     <div className="content-pad page-enter">
@@ -158,7 +160,7 @@ const Dashboard = () => {
       </div>
 
       <div className="stat-grid">
-        <StatCard label="Total Anggota" value={totalMembers} sub="pengguna aktif" Icon={Icons.Users3} tone="var(--accent)" />
+        <StatCard label={isCEO ? "Total Anggota" : "Anggota Aktif"} value={totalMembers} sub="pengguna aktif" Icon={Icons.Users3} tone="var(--accent)" />
         <StatCard
           label="Ongoing Sekarang"
           value={ongoing}
@@ -176,11 +178,20 @@ const Dashboard = () => {
         <StatCard label="Selesai Hari Ini" value={doneCount} sub="todo tuntas" Icon={Icons.CheckCircle} tone="#0f7b3f" />
         {!isCEO && (
           <StatCard
-            label="Jam Kerja Hari Ini"
-            value={`${myHoursWorked}j`}
-            sub="dari 8 jam target"
+            label="Jam Kerja Saya Hari Ini"
+            value={`${myHoursApproved}j`}
+            sub="jam disetujui hari ini"
             Icon={Icons.Clock}
             tone="var(--accent)"
+          />
+        )}
+        {!isCEO && (
+          <StatCard
+            label="Total Kerja Tim 7 Hari"
+            value={`${teamWeekTotal}j`}
+            sub="seluruh tim, 7 hari terakhir"
+            Icon={Icons.Chart}
+            tone="#2b9d6b"
           />
         )}
       </div>
@@ -265,7 +276,7 @@ const RunningTodoCard = ({ todo }) => {
 };
 
 const QueueCard = ({ todo }) => {
-  const { startTodo, go, openEdit } = useApp();
+  const { startTodo, go, openEdit, carryOverTodo } = useApp();
   const rejected = todo.state === "rejected";
   return (
     <Card hover>
@@ -287,7 +298,11 @@ const QueueCard = ({ todo }) => {
         <div className="col gap8" style={{ alignItems: "flex-end" }}>
           {rejected
             ? <Btn icon={<Icons.Edit size={14} />} onClick={() => openEdit(todo)}>Edit &amp; Resubmit</Btn>
-            : <Btn variant="accent" icon={<Icons.Play size={14} />} onClick={() => startTodo(todo.id)}>Start</Btn>}
+            : <>
+                <Btn variant="accent" icon={<Icons.Play size={14} />} onClick={() => startTodo(todo.id)}>Start</Btn>
+                <Btn icon={<Icons.ArrowRight size={14} />} onClick={() => carryOverTodo(todo.id)}
+                     title="Pindahkan ke hari kerja berikutnya" style={{ fontSize: 12 }}>Teruskan ke Besok</Btn>
+              </>}
         </div>
       </div>
     </Card>
@@ -295,10 +310,9 @@ const QueueCard = ({ todo }) => {
 };
 
 const MyTodo = () => {
-  const { todos, openAdd, hoursUsed } = useApp();
+  const { todos, openAdd, hoursUsed, archiveTodo, go, pendingMemberCount } = useApp();
   const ongoingList = todos.filter((t) => t.state === "ongoing");
-  const waiting = todos.filter((t) => t.state === "waiting");
-  const queue = todos.filter((t) => t.state === "queue" || t.state === "rejected");
+  const queue = todos.filter((t) => t.state === "queue");
   const done = todos.filter((t) => t.state === "done");
   const today = new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   return (
@@ -324,33 +338,23 @@ const MyTodo = () => {
         </div>
       </Card>
 
+      {pendingMemberCount > 0 && (
+        <div className="muted-box row gap8" style={{ marginBottom: 8, cursor: "pointer" }} onClick={() => go("pending")}>
+          <Icons.Hourglass size={14} style={{ color: "#c8650a" }} />
+          <span className="t-caption" style={{ flex: 1 }}>
+            {pendingMemberCount} todo menunggu approval / ditolak
+          </span>
+          <span className="t-caption accent-text">Lihat →</span>
+        </div>
+      )}
+
       {ongoingList.length > 0 && <>
         <SectionLabel><Icons.Refresh size={13} /> Sedang Berjalan</SectionLabel>
         <div className="col" style={{ gap: 12 }}>{ongoingList.map((t) => <RunningTodoCard key={t.id} todo={t} />)}</div>
       </>}
 
-      {waiting.length > 0 && <>
-        <SectionLabel><Icons.Hourglass size={13} /> Menunggu Approval ({waiting.length})</SectionLabel>
-        <div className="col" style={{ gap: 12 }}>
-          {waiting.map((t) => (
-            <Card key={t.id} hover>
-              <div className="row" style={{ alignItems: "flex-start" }}>
-                <div style={{ flex: 1 }}>
-                  <div className="row gap8"><span className="t-body-strong">{t.title}</span><Badge kind="waiting" /></div>
-                  <div className="dim t-caption" style={{ marginTop: 4 }}>
-                    Diajukan {t.submittedAt} &nbsp;·&nbsp; Batas approve {t.deadline} &nbsp;·&nbsp; Est {t.est} jam
-                    {t.overtime && <span className="badge over" style={{ marginLeft: 6 }}><Icons.Warning size={11} />Overtime</span>}
-                  </div>
-                </div>
-                <div className="muted-box t-caption dim" style={{ padding: "6px 10px" }}>Auto-approve ⚡ 09:00</div>
-              </div>
-            </Card>
-          ))}
-        </div>
-      </>}
-
       {queue.length > 0 && <>
-        <SectionLabel><Icons.Flag size={13} /> Antrian</SectionLabel>
+        <SectionLabel><Icons.Flag size={13} /> Antrian Siap Dikerjakan</SectionLabel>
         <div className="col" style={{ gap: 12 }}>{queue.map((t) => <QueueCard key={t.id} todo={t} />)}</div>
       </>}
 
@@ -359,11 +363,13 @@ const MyTodo = () => {
         ? <Card><div className="dim t-caption">Belum ada todo selesai hari ini.</div></Card>
         : <Card pad={false}>
             {done.map((t, i) => (
-              <div key={t.id} className="row gap12" style={{ padding: "12px 18px", borderTop: i ? "1px solid var(--divider)" : "none" }}>
+              <div key={t.id} className="row gap12" style={{ padding: "12px 18px", borderTop: i ? "1px solid var(--divider)" : "none", alignItems: "center" }}>
                 <Icons.CheckCircle size={17} style={{ color: "#0f7b3f" }} />
                 <span className="t-body-strong" style={{ flex: 1 }}>{t.title}</span>
                 <span className="dim t-caption">{t.est} jam</span>
                 <span className="dim2 t-caption" style={{ width: 110, textAlign: "right" }}>{t.range}</span>
+                <Btn size="sm" icon={<Icons.Archive size={13} />} onClick={() => archiveTodo(t.id)}
+                     style={{ marginLeft: 8 }} title="Arsipkan todo">Arsipkan</Btn>
               </div>
             ))}
           </Card>}
@@ -455,4 +461,262 @@ const TodoDetail = () => {
   );
 };
 
-Object.assign(window, { LoginPage, Dashboard, MyTodo, TodoDetail, AnimatedBars });
+/* ---------- MENUNGGU APPROVAL ---------- */
+const PendingApproval = () => {
+  const { todos, openEdit, deleteTodo, carryOverTodo, routeParam } = useApp();
+  const waiting = todos.filter((t) => t.state === "waiting");
+  const rejected = todos.filter((t) => t.state === "rejected");
+  const today = new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+
+  const highlight = (id) => routeParam === id
+    ? { outline: "2px solid var(--accent)", outlineOffset: 2, borderRadius: 8 }
+    : {};
+
+  return (
+    <div className="content-pad page-enter">
+      <div className="row" style={{ alignItems: "flex-end", marginBottom: 18 }}>
+        <div>
+          <div className="t-title">Menunggu Approval</div>
+          <div className="dim" style={{ marginTop: 2 }}>{today}</div>
+        </div>
+      </div>
+
+      {waiting.length === 0 && rejected.length === 0 && (
+        <Card><div className="dim t-caption">Tidak ada todo yang menunggu approval atau ditolak.</div></Card>
+      )}
+
+      {waiting.length > 0 && <>
+        <SectionLabel><Icons.Hourglass size={13} /> Menunggu Approval ({waiting.length})</SectionLabel>
+        <div className="col" style={{ gap: 12 }}>
+          {waiting.map((t) => (
+            <Card key={t.id} hover style={highlight(t.id)}>
+              <div className="row" style={{ alignItems: "flex-start" }}>
+                <div style={{ flex: 1 }}>
+                  <div className="row gap8"><span className="t-body-strong">{t.title}</span><Badge kind="waiting" /></div>
+                  <div className="dim t-caption" style={{ marginTop: 4 }}>
+                    Diajukan {t.submittedAt} &nbsp;·&nbsp; Est {t.est} jam
+                    {t.overtime && <span className="badge over" style={{ marginLeft: 6 }}><Icons.Warning size={11} />Overtime</span>}
+                  </div>
+                </div>
+                <div className="col gap8" style={{ alignItems: "flex-end" }}>
+                  <div className="muted-box t-caption dim" style={{ padding: "6px 10px" }}>Auto-approve ⚡ 09:00</div>
+                  <Btn icon={<Icons.ArrowRight size={13} />} onClick={() => carryOverTodo(t.id)}
+                       style={{ fontSize: 12 }}>Teruskan ke Besok</Btn>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </>}
+
+      {rejected.length > 0 && <>
+        <SectionLabel><Icons.XCircle size={13} /> Ditolak ({rejected.length})</SectionLabel>
+        <div className="col" style={{ gap: 12 }}>
+          {rejected.map((t) => (
+            <Card key={t.id} hover style={highlight(t.id)}>
+              <div className="row" style={{ alignItems: "flex-start", gap: 12 }}>
+                <div style={{ flex: 1 }}>
+                  <div className="row gap8">
+                    <span className="t-body-strong">{t.title}</span>
+                    <Badge kind="rejected" />
+                  </div>
+                  <div className="dim t-caption" style={{ marginTop: 4 }}>Estimasi {t.est} jam</div>
+                  <div className="muted-box mt12" style={{ borderColor: "rgba(196,43,28,.28)" }}>
+                    <div className="row gap8"><Icons.XCircle size={14} style={{ color: "#c42b1c" }} />
+                      <span className="t-caption" style={{ color: "#c42b1c", fontWeight: 600 }}>Ditolak</span></div>
+                    {t.rejectNote && <div className="t-caption dim" style={{ marginTop: 4 }}>"{t.rejectNote}"</div>}
+                  </div>
+                </div>
+                <div className="col gap8" style={{ alignItems: "flex-end" }}>
+                  <Btn icon={<Icons.Edit size={14} />} onClick={() => openEdit(t)}>Edit &amp; Resubmit</Btn>
+                  <Btn variant="subtle" icon={<Icons.Trash size={14} />} onClick={() => deleteTodo(t.id)}
+                       style={{ color: "#c42b1c" }}>Hapus</Btn>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </>}
+    </div>
+  );
+};
+
+/* ---------- SELESAI (ARSIP) ---------- */
+const Selesai = () => {
+  const { archived } = useApp();
+  return (
+    <div className="content-pad page-enter">
+      <div className="row" style={{ alignItems: "flex-end", marginBottom: 18 }}>
+        <div>
+          <div className="t-title">Selesai</div>
+          <div className="dim" style={{ marginTop: 2 }}>Todo yang sudah diarsipkan</div>
+        </div>
+      </div>
+
+      {archived.length === 0 && (
+        <Card><div className="dim t-caption">Belum ada todo yang diarsipkan. Selesaikan todo lalu klik "Arsipkan".</div></Card>
+      )}
+
+      {archived.length > 0 && (
+        <Card pad={false}>
+          {archived.map((t, i) => (
+            <div key={t.id} className="row gap12" style={{ padding: "13px 18px", borderTop: i ? "1px solid var(--divider)" : "none", alignItems: "center" }}>
+              <Icons.Archive size={16} style={{ color: "#0f7b3f", flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <div className="t-body-strong">{t.title}</div>
+                {t.desc && <div className="dim t-caption" style={{ marginTop: 2 }}>{t.desc}</div>}
+              </div>
+              <span className="dim t-caption">{t.est} jam</span>
+              <span className="dim2 t-caption" style={{ width: 110, textAlign: "right" }}>{t.range || t.createdAt || ""}</span>
+            </div>
+          ))}
+        </Card>
+      )}
+    </div>
+  );
+};
+
+/* ---------- BANTUAN (HELP) ---------- */
+const FAQ_ITEMS = [
+  {
+    q: 'Apa itu status "Menunggu Approval"?',
+    a: 'Todo yang kamu ajukan sedang menunggu persetujuan CEO. Todo belum bisa dimulai sampai disetujui. Jika CEO tidak merespons sebelum batas waktu yang dikonfigurasi, todo akan otomatis disetujui (auto-approve).',
+  },
+  {
+    q: 'Apa yang terjadi jika todo ditolak CEO?',
+    a: 'Todo yang ditolak muncul di halaman "Menunggu Approval" dengan alasan penolakan. Kamu bisa klik "Edit & Resubmit" untuk memperbaiki dan mengajukan ulang, atau klik "Hapus" untuk menghapus todo tersebut.',
+  },
+  {
+    q: 'Bisakah saya mengubah todo yang sudah diajukan?',
+    a: 'Hanya todo yang berstatus Ditolak yang bisa diubah, dengan fitur "Edit & Resubmit". Todo yang sedang menunggu atau sudah disetujui tidak bisa diedit secara langsung.',
+  },
+  {
+    q: 'Apa itu Overtime?',
+    a: 'Jika total estimasi jam todo kamu dalam satu hari melebihi 8 jam, todo tersebut akan masuk kategori Overtime. Todo overtime memerlukan approval khusus dari CEO dan ditandai dengan label oranye.',
+  },
+  {
+    q: 'Apa itu Auto-approve?',
+    a: 'Jika CEO belum merespons todo kamu sebelum batas waktu yang telah dikonfigurasi (default pukul 09:00 WIB), sistem akan otomatis menyetujui todo tersebut. Ini memastikan pekerjaanmu tidak tertunda.',
+  },
+  {
+    q: 'Bagaimana cara mengarsipkan todo yang selesai?',
+    a: 'Setelah todo berstatus Selesai (DONE), kamu bisa klik tombol "Arsipkan" di samping todo tersebut di halaman My Todo. Todo yang diarsipkan akan tersimpan di halaman "Selesai" dan tidak muncul lagi di My Todo.',
+  },
+  {
+    q: 'Apa itu "Teruskan ke Besok"?',
+    a: 'Tombol ini memindahkan todo yang sudah disetujui tapi belum dikerjakan ke hari kerja berikutnya. Berguna jika kamu tidak sempat mengerjakan todo hari ini dan ingin melanjutkannya besok.',
+  },
+  {
+    q: 'Kenapa saya tidak bisa mengajukan todo di akhir pekan?',
+    a: 'TeamFlow hanya mendukung hari kerja (Senin–Jumat). Pengajuan todo di Sabtu atau Minggu akan ditolak otomatis oleh sistem untuk memastikan manajemen waktu kerja yang sehat.',
+  },
+  {
+    q: 'Berapa batas maksimum jam kerja per hari?',
+    a: 'Batas normal adalah 8 jam per hari. Kamu bisa mengajukan lebih dari itu, namun todo akan dikategorikan sebagai Overtime dan memerlukan persetujuan khusus dari CEO.',
+  },
+  {
+    q: 'Apakah saya bisa melihat todo hari-hari sebelumnya?',
+    a: 'Todo yang sudah diarsipkan bisa dilihat di halaman "Selesai". Untuk laporan harian termasuk riwayat tim, lihat halaman "Laporan Harian".',
+  },
+];
+
+const Help = () => {
+  const [openFaq, setOpenFaq] = useState(null);
+
+  const STEPS = [
+    { n: 1, title: "Buka halaman My Todo", desc: "Klik menu My Todo di navigasi kiri." },
+    { n: 2, title: 'Klik tombol "Tambah Todo"', desc: "Tombol biru di pojok kanan atas halaman My Todo." },
+    { n: 3, title: "Isi Judul Todo", desc: "Masukkan judul singkat yang menggambarkan pekerjaan, misalnya: \"Desain halaman login\"." },
+    { n: 4, title: "Tulis Deskripsi (min. 20 kata)", desc: "Jelaskan secara detail apa yang akan dikerjakan, langkah-langkahnya, tools yang digunakan, dan hasil yang diharapkan. Deskripsi minimal 20 kata agar CEO bisa menilai kelayakannya." },
+    { n: 5, title: "Pilih Estimasi Waktu", desc: "Pilih durasi pengerjaan: 0.5 / 1 / 1.5 / 2 jam. Pastikan total jam hari ini tidak melebihi 8 jam (kecuali izin overtime)." },
+    { n: 6, title: 'Klik "Ajukan"', desc: "Todo dikirim ke CEO untuk disetujui. Kamu bisa mulai mengerjakan setelah disetujui." },
+  ];
+
+  const RULES = [
+    { icon: Icons.Clock, color: "#c8650a", title: "Batas 8 Jam/Hari", desc: "Total estimasi todo dalam satu hari maksimal 8 jam. Lebih dari itu = Overtime, butuh approval khusus." },
+    { icon: Icons.Flag, color: "var(--accent)", title: "Deskripsi Minimal 20 Kata", desc: "Setiap todo wajib memiliki deskripsi yang jelas agar CEO dapat menilai keperluan dan urgensinya." },
+    { icon: Icons.Hourglass, color: "#2b9d6b", title: "Auto-approve Sesuai Batas", desc: "Jika CEO tidak merespons sebelum batas waktu (dikonfigurasi di Settings CEO), todo otomatis disetujui." },
+    { icon: Icons.Calendar, color: "#5e3d89", title: "Hanya Hari Kerja (Sen–Jum)", desc: "Pengajuan todo hanya bisa dilakukan di hari kerja. Akhir pekan ditolak otomatis oleh sistem." },
+  ];
+
+  return (
+    <div className="content-pad page-enter" style={{ maxWidth: 780 }}>
+      <div className="t-title" style={{ marginBottom: 4 }}>Bantuan &amp; Panduan</div>
+      <div className="dim" style={{ marginBottom: 24 }}>Panduan penggunaan TeamFlow untuk anggota tim</div>
+
+      {/* Section 1 — Steps */}
+      <SectionLabel><Icons.Tasks size={13} /> Cara Menambahkan Todo</SectionLabel>
+      <Card>
+        <div className="col" style={{ gap: 0 }}>
+          {STEPS.map((s, i) => (
+            <div key={s.n} className="row gap14" style={{
+              padding: "14px 0",
+              borderTop: i ? "1px solid var(--divider)" : "none",
+            }}>
+              <div style={{
+                flexShrink: 0, width: 32, height: 32, borderRadius: "50%",
+                background: "color-mix(in srgb, var(--accent) 15%, transparent)",
+                color: "var(--accent)", display: "grid", placeItems: "center",
+                fontWeight: 700, fontSize: 14,
+              }}>{s.n}</div>
+              <div>
+                <div className="t-body-strong">{s.title}</div>
+                <div className="dim t-caption" style={{ marginTop: 3 }}>{s.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Section 2 — Rules */}
+      <SectionLabel><Icons.Info size={13} /> Aturan &amp; Ketentuan</SectionLabel>
+      <div className="stat-grid" style={{ marginBottom: 0 }}>
+        {RULES.map((r, i) => (
+          <Card key={i} hover>
+            <div className="row gap12" style={{ marginBottom: 8 }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center",
+                color: r.color, background: `color-mix(in srgb, ${r.color} 14%, transparent)`,
+                flexShrink: 0,
+              }}><r.icon size={18} /></div>
+              <span className="t-body-strong" style={{ alignSelf: "center" }}>{r.title}</span>
+            </div>
+            <p className="dim t-caption" style={{ margin: 0, lineHeight: 1.5 }}>{r.desc}</p>
+          </Card>
+        ))}
+      </div>
+
+      {/* Section 3 — FAQ */}
+      <SectionLabel><Icons.Bolt size={13} /> Tanya Jawab (FAQ)</SectionLabel>
+      <div className="col" style={{ gap: 6 }}>
+        {FAQ_ITEMS.map((item, i) => (
+          <Card key={i} pad={false} style={{ overflow: "hidden" }}>
+            <div className="row gap12 reveal" style={{ padding: "14px 18px", cursor: "pointer" }}
+                 onClick={() => setOpenFaq(openFaq === i ? null : i)}>
+              <Icons.ChevronRight size={15} className="dim2" style={{
+                transform: openFaq === i ? "rotate(90deg)" : "none",
+                transition: "transform .18s",
+                flexShrink: 0,
+              }} />
+              <span className="t-body-strong" style={{ flex: 1 }}>{item.q}</span>
+            </div>
+            {openFaq === i && (
+              <div style={{ padding: "0 18px 16px 45px", borderTop: "1px solid var(--divider)" }}>
+                <p className="dim t-caption" style={{ margin: "12px 0 0", lineHeight: 1.6 }}>{item.a}</p>
+              </div>
+            )}
+          </Card>
+        ))}
+      </div>
+
+      <div className="muted-box mt16 row gap8" style={{ alignItems: "flex-start" }}>
+        <Icons.Info size={14} className="accent-text" style={{ marginTop: 1, flexShrink: 0 }} />
+        <span className="t-caption dim">
+          Jika masih ada pertanyaan atau menemukan masalah, hubungi CEO atau admin tim kamu.
+        </span>
+      </div>
+    </div>
+  );
+};
+
+Object.assign(window, { LoginPage, Dashboard, MyTodo, TodoDetail, AnimatedBars, PendingApproval, Selesai, Help });

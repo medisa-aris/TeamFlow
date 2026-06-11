@@ -106,7 +106,7 @@ function mapTodo(t) {
     id: t.id,
     title: t.title,
     desc: t.description || "",
-    est: t.estimatedHours,
+    est: Number(t.estimatedHours),
     state,
     running,
     paused,
@@ -204,14 +204,17 @@ function mapReportDetail(data) {
     .map((t) => ({
       time: fmtTime(t.createdAt) || "—",
       task: t.title,
-      h: t.estimatedHours,
+      h: Number(t.estimatedHours),
       state: t.status === "DONE" ? "done" : "ongoing",
     }));
 
-  const pauseSessions = (data.todos || []).flatMap((t) =>
-    (t.sessions || []).filter((s) => s.pausedAt).map((s) =>
-      `${fmtTime(s.startedAt)}–${fmtTime(s.pausedAt)}`
-    )
+  const pauseItems = (data.todos || []).flatMap((t) =>
+    (t.sessions || []).filter((s) => s.pausedAt).map((s) => ({
+      task: t.title,
+      start: fmtTime(s.startedAt),
+      end: fmtTime(s.pausedAt),
+      durationMin: Math.round((Number(s.elapsedSeconds) || 0) / 60),
+    }))
   );
 
   return {
@@ -220,7 +223,7 @@ function mapReportDetail(data) {
     name: data.user.fullName,
     used: Math.round(totalWorkedHours * 10) / 10,
     items,
-    pause: pauseSessions.length ? pauseSessions.join(", ") : "Tidak ada pause",
+    pause: pauseItems,
   };
 }
 

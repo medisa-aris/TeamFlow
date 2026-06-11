@@ -83,6 +83,11 @@ async function apiPatch(url, body) {
   const res = await apiFetch(url, { method: "PATCH", body: JSON.stringify(body || {}) });
   return res.json();
 }
+async function apiDelete(url) {
+  const res = await apiFetch(url, { method: "DELETE" });
+  if (res.status === 204) return {};
+  return res.json();
+}
 
 let sseController = null;
 
@@ -149,6 +154,36 @@ window.API = {
       return apiPatch(`/todos/${id}/reject`, { reason: reason || "Ditolak" });
     },
     async pendingApprovals() { return apiGet("/todos/pending-approvals"); },
+    async delete(id) {
+      const res = await apiFetch(`/todos/${id}`, { method: "DELETE" });
+      if (res.status === 204 || res.status === 200) return null;
+      return res.json().catch(() => null);
+    },
+    async update(id, data) {
+      return apiPatch(`/todos/${id}`, {
+        title: data.title,
+        description: data.desc || "",
+        estimatedHours: Number(data.est),
+      });
+    },
+    async archive(id) { return apiPost(`/todos/${id}/archive`); },
+    async archived() { return apiGet("/todos/archived"); },
+    async createForMember(targetUserId, data) {
+      return apiPost("/todos/for-member", {
+        title: data.title,
+        description: data.desc || "",
+        estimatedHours: Number(data.est),
+        targetUserId,
+      });
+    },
+    async carryOver(id) { return apiPost(`/todos/${id}/carry-over`); },
+  },
+
+  SystemConfig: {
+    async get() { return apiGet("/system-config"); },
+    async update(approvalDeadlineHour) {
+      return apiPatch("/system-config", { approvalDeadlineHour: Number(approvalDeadlineHour) });
+    },
   },
 
   Dashboard: {
@@ -168,6 +203,7 @@ window.API = {
       return apiGet(`/notifications${unreadOnly ? "?unread_only=true" : ""}`);
     },
     async markRead(id) { return apiPatch(`/notifications/${id}/read`, {}); },
+    async delete(id) { return apiDelete(`/notifications/${id}`); },
   },
 
   Users: {

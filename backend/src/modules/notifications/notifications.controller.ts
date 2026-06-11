@@ -1,6 +1,8 @@
 import {
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
   Patch,
   Query,
@@ -36,6 +38,12 @@ export class NotificationsController {
   @Patch('notifications/:id/read')
   markRead(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     return this.notificationsService.markRead(id, user.sub);
+  }
+
+  @Delete('notifications/:id')
+  @HttpCode(204)
+  remove(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.notificationsService.remove(id, user.sub);
   }
 
   @Sse('events/stream')

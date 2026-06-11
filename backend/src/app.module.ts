@@ -15,6 +15,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { RedisModule } from './modules/redis/redis.module';
+import { SystemConfigModule } from './modules/system-config/system-config.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { RedisModule } from './modules/redis/redis.module';
     NotificationsModule,
     DashboardModule,
     ReportsModule,
+    SystemConfigModule,
   ],
 })
 export class AppModule {}

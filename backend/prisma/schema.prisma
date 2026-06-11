@@ -225,3 +225,11 @@ model Notification {
   @@index([createdAt], name: "idx_notifications_created_at")
   @@map("notifications")
 }
+
+model SystemConfig {
+  id                   Int      @id @default(1)
+  approvalDeadlineHour Int      @default(9) @map("approval_deadline_hour")
+  updatedAt            DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("system_config")
+}

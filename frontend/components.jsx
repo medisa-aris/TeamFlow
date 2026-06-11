@@ -182,11 +182,14 @@ const ToastHost = ({ toasts, remove }) => (
    Navigation rail (WinUI NavigationView)
    ============================================================ */
 const NAV = [
-  { key: "dashboard", label: "Dashboard",       Icon: Icons.Home,     roles: ["CEO", "Member"] },
-  { key: "mytodo",    label: "My Todo",          Icon: Icons.Tasks,    roles: ["Member"] },
-  { key: "approval",  label: "Approval Queue",   Icon: Icons.Approval, roles: ["CEO"], badge: "pending" },
-  { key: "laporan",   label: "Laporan Harian",   Icon: Icons.Chart,    roles: ["CEO", "Member"] },
-  { key: "users",     label: "User Management",  Icon: Icons.People,   roles: ["CEO"] },
+  { key: "dashboard", label: "Dashboard",          Icon: Icons.Home,     roles: ["CEO", "Member"] },
+  { key: "mytodo",    label: "My Todo",             Icon: Icons.Tasks,    roles: ["Member"] },
+  { key: "pending",   label: "Menunggu Approval",   Icon: Icons.Clock,    roles: ["Member"], badge: "pending_member" },
+  { key: "selesai",   label: "Selesai",             Icon: Icons.Archive,  roles: ["Member"] },
+  { key: "approval",  label: "Approval Queue",      Icon: Icons.Approval, roles: ["CEO"], badge: "pending" },
+  { key: "laporan",   label: "Laporan Harian",      Icon: Icons.Chart,    roles: ["CEO", "Member"] },
+  { key: "help",      label: "Bantuan",             Icon: Icons.Info,     roles: ["Member"] },
+  { key: "users",     label: "User Management",     Icon: Icons.People,   roles: ["CEO"] },
 ];
 const NAV_FOOT = [
   { key: "settings",  label: "Settings",         Icon: Icons.Settings, roles: ["CEO", "Member"] },
@@ -205,15 +208,20 @@ const NavItem = ({ item, active, onClick, badgeVal }) => {
 };
 
 const NavRail = () => {
-  const { route, go, role, compact, pendingCount } = useApp();
+  const { route, go, role, compact, pendingCount, pendingMemberCount } = useApp();
   const visible = (it) => it.roles.includes(role);
+  const badgeFor = (it) => {
+    if (it.badge === "pending") return pendingCount || 0;
+    if (it.badge === "pending_member") return pendingMemberCount || 0;
+    return 0;
+  };
   return (
     <nav className={`rail ${compact ? "compact" : ""}`}>
       <div className="rail-scroll">
         {NAV.filter(visible).map((it) => (
           <NavItem key={it.key} item={it} active={route === it.key}
                    onClick={() => go(it.key)}
-                   badgeVal={it.badge === "pending" ? pendingCount : 0} />
+                   badgeVal={badgeFor(it)} />
         ))}
       </div>
       <div>
@@ -273,7 +281,8 @@ const NOTIF_KIND = {
   DELEGATION_CREATED: "info", DELEGATION_REVOKED: "info",
 };
 const NOTIF_NAV = {
-  TODO_APPROVED: "mytodo", TODO_AUTO_APPROVED: "mytodo", TODO_REJECTED: "mytodo",
+  TODO_APPROVED: "mytodo", TODO_AUTO_APPROVED: "mytodo",
+  TODO_REJECTED: "pending",
   TODO_PENDING_APPROVAL: "approval",
   DELEGATION_CREATED: "settings", DELEGATION_REVOKED: "settings",
 };
@@ -303,7 +312,7 @@ const NotifFlyout = () => {
             <div key={n.id || i} className="row gap12 reveal"
                  style={{ padding: "11px 14px", cursor: "pointer", alignItems: "flex-start",
                           background: n.readAt ? "transparent" : "color-mix(in srgb, var(--accent) 5%, transparent)" }}
-                 onClick={() => { setNotifOpen(false); markNotifRead(n.id); go(to); }}>
+                 onClick={() => { setNotifOpen(false); markNotifRead(n.id); go(to, n.todoId || null); }}>
               <span style={{ flex: "0 0 22px", height: 22, display: "grid", placeItems: "center",
                              borderRadius: "50%", marginTop: 1, background: "var(--subtle-sel)",
                              color: k === "err" ? "#c42b1c" : k === "ok" ? "#0f7b3f" : "var(--accent)" }}>
@@ -325,5 +334,5 @@ Object.assign(window, {
   AppContext, useApp, useReveal, useTicker,
   Avatar, Badge, STATUS_META, Btn, HBtn, Toggle, Field, TextBox, TextArea, Select, SearchBox,
   Card, SectionLabel, ProgressBar, Smoke, Dialog, Panel, ToastHost,
-  NavRail, Header, NAV,
+  NavRail, Header, NAV, NAV_FOOT, NOTIF_NAV,
 });

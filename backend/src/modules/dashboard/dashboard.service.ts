@@ -69,7 +69,7 @@ export class DashboardService {
         h.todo_date::text AS date,
         SUM(h.approved_hours) AS total_approved_hours,
         SUM(h.worked_hours) AS total_worked_hours,
-        COUNT(DISTINCT h.user_id) AS active_members
+        COUNT(DISTINCT h.user_id)::int AS active_members
       FROM vw_daily_user_hours h
       WHERE h.todo_date::text = ANY(${workingDays})
       GROUP BY h.todo_date

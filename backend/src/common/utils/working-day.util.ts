@@ -15,11 +15,21 @@ export function getTodayDateStringWIB(): string {
   return format(toZonedTime(new Date(), WIB), 'yyyy-MM-dd', { timeZone: WIB });
 }
 
-export function shouldAutoApproveNow(): boolean {
+export function shouldAutoApproveNow(deadlineHour = 9): boolean {
   const nowWIB = toZonedTime(new Date(), WIB);
   if (isWeekend(nowWIB)) return false;
   const hours = nowWIB.getHours();
-  return hours >= 9;
+  return hours >= deadlineHour;
+}
+
+export function getNextWorkingDateWIB(): Date {
+  let cursor = toZonedTime(new Date(), WIB);
+  cursor = new Date(cursor.getTime() + 86400000); // add one day
+  while (isWeekend(cursor)) {
+    cursor = new Date(cursor.getTime() + 86400000);
+  }
+  const dateStr = format(cursor, 'yyyy-MM-dd', { timeZone: WIB });
+  return new Date(dateStr);
 }
 
 export function getWorkingDaysBack(n: number): string[] {

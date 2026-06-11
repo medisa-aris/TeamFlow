@@ -40,6 +40,15 @@ export class NotificationsService {
     });
   }
 
+  async remove(id: string, userId: string) {
+    const notification = await this.prisma.notification.findFirst({ where: { id } });
+    if (!notification) throw new NotFoundException('Notification not found');
+    if (notification.recipientUserId !== userId) {
+      throw new ForbiddenException('Cannot delete another user\'s notification');
+    }
+    await this.prisma.notification.delete({ where: { id } });
+  }
+
   async pushToUser(userId: string, data: Record<string, unknown>): Promise<void> {
     this.sse.emit(userId, { data, type: 'notification.new' });
   }

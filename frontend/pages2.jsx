@@ -18,12 +18,17 @@ function countWords(str) {
 }
 
 const AddTodoPanel = () => {
-  const { addPanel, closeAdd, submitTodo, hoursUsed } = useApp();
+  const { addPanel, closeAdd, submitTodo, hoursUsed, isCEO, users, systemConfig } = useApp();
+  const deadlineHour = systemConfig?.approvalDeadlineHour ?? 9;
+  const deadlineLabel = `${String(deadlineHour).padStart(2, "0")}:00`;
   const editing = addPanel.mode === "edit";
   const [title, setTitle] = useState(addPanel.todo?.title || "");
   const [desc, setDesc] = useState(addPanel.todo?.desc || "");
   const [est, setEst] = useState(addPanel.todo?.est || 0.5);
   const [descTouched, setDescTouched] = useState(false);
+  const [targetMemberId, setTargetMemberId] = useState("");
+
+  const members = (users || []).filter((u) => u.role === "Member" || u.role === "MEMBER");
 
   const remaining = Math.max(0, 8 - hoursUsed);
   const projected = hoursUsed + Number(est);
@@ -32,21 +37,34 @@ const AddTodoPanel = () => {
   const wordCount = countWords(desc);
   const descOk = wordCount >= MIN_DESC_WORDS;
   const descWarn = descTouched && !descOk;
-  const valid = title.trim().length > 0 && descOk;
+  const memberOk = !isCEO || !!targetMemberId;
+  const valid = title.trim().length > 0 && descOk && memberOk;
+
+  const panelTitle = isCEO
+    ? "Buat Todo untuk Anggota"
+    : editing ? "Edit & Resubmit" : "Tambah Todo Baru";
 
   return (
     <Panel
-      title={editing ? "Edit & Resubmit" : "Tambah Todo Baru"}
+      title={panelTitle}
       icon={<span style={{ color: "var(--accent)" }}>{editing ? <Icons.Edit size={20} /> : <Icons.Plus size={20} />}</span>}
       onClose={closeAdd}
       footer={<>
         <Btn onClick={closeAdd}>Batal</Btn>
         <Btn variant="accent" disabled={!valid} icon={<Icons.ArrowRight size={15} />}
-             onClick={() => submitTodo({ ...addPanel.todo, title: title.trim(), desc, est: Number(est) }, editing)}>
-          {editing ? "Resubmit" : "Ajukan"}
+             onClick={() => submitTodo({ ...addPanel.todo, title: title.trim(), desc, est: Number(est), targetMemberId: isCEO ? targetMemberId : undefined }, editing)}>
+          {isCEO ? "Buat Todo" : editing ? "Resubmit" : "Ajukan"}
         </Btn>
       </>}
     >
+      {isCEO && (
+        <Field label="Anggota" req hint="Pilih anggota yang akan mendapat todo ini">
+          <Select value={targetMemberId} onChange={(e) => setTargetMemberId(e.target.value)}>
+            <option value="">— Pilih anggota —</option>
+            {members.map((u) => <option key={u.id} value={u.id}>{u.name || u.first}</option>)}
+          </Select>
+        </Field>
+      )}
       <Field label="Judul" req>
         <TextBox value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Desain halaman dashboard..." autoFocus />
       </Field>
@@ -82,26 +100,38 @@ const AddTodoPanel = () => {
         </Select>
       </Field>
 
-      <div className="muted-box" style={{ borderColor: over ? "rgba(200,95,10,.35)" : "var(--stroke)" }}>
-        <div className="row gap8">
-          <Icons.Clock size={15} className="dim" />
-          <span className="t-caption" style={{ flex: 1 }}>Sisa jam hari ini</span>
-          <span className="t-body-strong">{remaining} jam</span>
-        </div>
-        <div className="mt8"><ProgressBar value={projected} max={8} variant={over ? "warn" : ""} /></div>
-        <div className="row gap8 mt8">
-          {over
-            ? <><Icons.Warning size={14} style={{ color: "#c8650a" }} /><span className="t-caption" style={{ color: "#c8650a" }}>Overtime — {projected}/8 jam, perlu approval khusus CEO</span></>
-            : <><Icons.CheckCircle size={14} style={{ color: "#0f7b3f" }} /><span className="t-caption" style={{ color: "#0f7b3f" }}>Dalam batas normal — {projected}/8 jam</span></>}
-        </div>
-      </div>
+      {!isCEO && (
+        <>
+          <div className="muted-box" style={{ borderColor: over ? "rgba(200,95,10,.35)" : "var(--stroke)" }}>
+            <div className="row gap8">
+              <Icons.Clock size={15} className="dim" />
+              <span className="t-caption" style={{ flex: 1 }}>Sisa jam hari ini</span>
+              <span className="t-body-strong">{remaining} jam</span>
+            </div>
+            <div className="mt8"><ProgressBar value={projected} max={8} variant={over ? "warn" : ""} /></div>
+            <div className="row gap8 mt8">
+              {over
+                ? <><Icons.Warning size={14} style={{ color: "#c8650a" }} /><span className="t-caption" style={{ color: "#c8650a" }}>Overtime — {projected}/8 jam, perlu approval khusus CEO</span></>
+                : <><Icons.CheckCircle size={14} style={{ color: "#0f7b3f" }} /><span className="t-caption" style={{ color: "#0f7b3f" }}>Dalam batas normal — {projected}/8 jam</span></>}
+            </div>
+          </div>
+          <div className="muted-box mt16" style={{ background: "color-mix(in srgb, var(--accent) 7%, transparent)", borderColor: "color-mix(in srgb, var(--accent) 22%, transparent)" }}>
+            <div className="row gap8" style={{ alignItems: "flex-start" }}>
+              <Icons.Info size={15} className="accent-text" style={{ marginTop: 1 }} />
+              <span className="t-caption dim">Todo dikirim ke CEO untuk approval. Auto-approve ⚡ jika CEO belum merespons sebelum <b>{deadlineLabel}</b>.</span>
+            </div>
+          </div>
+        </>
+      )}
 
-      <div className="muted-box mt16" style={{ background: "color-mix(in srgb, var(--accent) 7%, transparent)", borderColor: "color-mix(in srgb, var(--accent) 22%, transparent)" }}>
-        <div className="row gap8" style={{ alignItems: "flex-start" }}>
-          <Icons.Info size={15} className="accent-text" style={{ marginTop: 1 }} />
-          <span className="t-caption dim">Todo dikirim ke CEO untuk approval. Auto-approve ⚡ jika CEO belum merespons sebelum <b>09:00</b>.</span>
+      {isCEO && (
+        <div className="muted-box mt16" style={{ background: "color-mix(in srgb, var(--accent) 7%, transparent)", borderColor: "color-mix(in srgb, var(--accent) 22%, transparent)" }}>
+          <div className="row gap8" style={{ alignItems: "flex-start" }}>
+            <Icons.Info size={15} className="accent-text" style={{ marginTop: 1 }} />
+            <span className="t-caption dim">Todo akan langsung auto-approved ⚡ dan anggota akan mendapat notifikasi.</span>
+          </div>
         </div>
-      </div>
+      )}
     </Panel>
   );
 };
@@ -153,23 +183,28 @@ const ApprovalCard = ({ item, onDecision }) => {
 };
 
 const ApprovalQueue = () => {
-  const { approvals, processed, decideApproval } = useApp();
+  const { approvals, processed, decideApproval, openAdd, systemConfig } = useApp();
   useTicker(true);
+  const cfgHour = systemConfig?.approvalDeadlineHour ?? 9;
   const now = new Date();
-  const deadline = new Date(now); deadline.setHours(9, 0, 0, 0);
+  const deadline = new Date(now); deadline.setHours(cfgHour, 0, 0, 0);
   const remainMs = deadline - now;
   const remainMin = Math.max(0, Math.round(remainMs / 60000));
   const isPast = remainMs < 0;
+  const deadlineLabel = `${String(cfgHour).padStart(2, "0")}:00`;
 
   return (
     <div className="content-pad page-enter" style={{ maxWidth: 760 }}>
-      <div className="t-title">Approval Queue</div>
+      <div className="row" style={{ alignItems: "flex-end", marginBottom: 4 }}>
+        <div className="t-title" style={{ flex: 1 }}>Approval Queue</div>
+        <Btn variant="accent" icon={<Icons.Plus size={15} />} onClick={openAdd}>Buat Todo untuk Anggota</Btn>
+      </div>
       <Card className="mt16">
         <div className="row gap16" style={{ alignItems: "center" }}>
           <div className="row gap8"><Icons.Clock size={18} className="accent-text" />
             <div className="col">
               <span className="t-caption dim2">Batas approve</span>
-              <span className="t-body-strong">09:00 pagi</span>
+              <span className="t-body-strong">{deadlineLabel} pagi</span>
             </div>
           </div>
           <div style={{ width: 1, height: 34, background: "var(--divider)" }} />
@@ -178,7 +213,7 @@ const ApprovalQueue = () => {
               {now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
             </span>
             <span className="t-body-strong" style={{ color: isPast ? "#0f7b3f" : "#c8650a" }}>
-              {isPast ? "Sudah melewati 09:00" : `Tersisa ${remainMin} menit`}
+              {isPast ? `Sudah melewati ${deadlineLabel}` : `Tersisa ${remainMin} menit`}
             </span>
           </div>
           <div className="spacer" />
@@ -366,17 +401,52 @@ const ReportDetailCard = ({ p }) => (
       ))}
       {p.items.length === 0 && <div className="dim t-caption">Tidak ada todo hari ini.</div>}
     </div>
-    <div className="muted-box mt12 t-caption dim row gap8" style={{ alignItems: "center" }}>
-      <Icons.Pause size={12} /> {p.pause}
+    <div className="muted-box mt12" style={{ padding: "10px 12px" }}>
+      <div className="row gap8" style={{ marginBottom: p.pause.length ? 8 : 0 }}>
+        <Icons.Pause size={12} className="dim" />
+        <span className="t-caption dim" style={{ fontWeight: 600 }}>Riwayat Pause</span>
+      </div>
+      {p.pause.length === 0
+        ? <span className="t-caption dim">Tidak ada pause</span>
+        : <table className="tbl" style={{ fontSize: 12, marginTop: 0 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left" }}>Tugas</th>
+                <th style={{ textAlign: "center", width: 60 }}>Mulai</th>
+                <th style={{ textAlign: "center", width: 60 }}>Selesai</th>
+                <th style={{ textAlign: "right", width: 64 }}>Durasi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {p.pause.map((r, i) => (
+                <tr key={i}>
+                  <td className="t-caption" style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.task}</td>
+                  <td className="t-caption dim2" style={{ textAlign: "center" }}>{r.start}</td>
+                  <td className="t-caption dim2" style={{ textAlign: "center" }}>{r.end}</td>
+                  <td className="t-caption" style={{ textAlign: "right", fontWeight: 600 }}>{r.durationMin} mnt</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>}
     </div>
   </Card>
 );
 
 const Laporan = () => {
-  const { report, reportDetail, week } = useApp();
+  const { report, reportDetail, week, isCEO } = useApp();
   const [scope, setScope] = useState("Semua");
   const [period, setPeriod] = useState("Minggu ini");
+  const [selectedMember, setSelectedMember] = useState("all");
   const dayLabels = ["Sen", "Sel", "Rab", "Kam", "Jum"];
+
+  const memberOptions = isCEO
+    ? reportDetail.map((p) => ({ id: p.id || p.first, name: p.name || p.first }))
+    : [];
+
+  const filteredDetail = selectedMember === "all"
+    ? reportDetail
+    : reportDetail.filter((p) => (p.id || p.first) === selectedMember);
+
   return (
     <div className="content-pad page-enter">
       <div className="row" style={{ alignItems: "flex-end", marginBottom: 18 }}>
@@ -385,14 +455,21 @@ const Laporan = () => {
           <div className="dim" style={{ marginTop: 2 }}>Ringkasan jam kerja tim</div>
         </div>
         <div className="row gap12 wrap">
-          <div className="select-wrap"><select className="tbx" style={{ minWidth: 130 }} value={scope} onChange={(e) => setScope(e.target.value)}>
-            <option>Semua</option><option>Per Anggota</option></select><Icons.Chevron size={14} /></div>
+          {isCEO && memberOptions.length > 0 && (
+            <div className="select-wrap">
+              <select className="tbx" style={{ minWidth: 140 }} value={selectedMember} onChange={(e) => setSelectedMember(e.target.value)}>
+                <option value="all">Semua Anggota</option>
+                {memberOptions.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+              <Icons.Chevron size={14} />
+            </div>
+          )}
           <div className="select-wrap"><select className="tbx" style={{ minWidth: 130 }} value={period} onChange={(e) => setPeriod(e.target.value)}>
             <option>Minggu ini</option><option>Minggu lalu</option><option>Bulan ini</option></select><Icons.Chevron size={14} /></div>
         </div>
       </div>
 
-      {report.length > 0 && (
+      {report.length > 0 && selectedMember === "all" && (
         <Card>
           <div className="t-subtitle" style={{ marginBottom: 14 }}>Ringkasan {period}</div>
           <div style={{ overflowX: "auto" }}>
@@ -425,19 +502,31 @@ const Laporan = () => {
       )}
 
       <SectionLabel><Icons.Calendar size={13} /> Detail Hari Ini</SectionLabel>
-      {reportDetail.length === 0
+      {filteredDetail.length === 0
         ? <Card><div className="dim t-caption">Memuat laporan...</div></Card>
-        : <div className="col" style={{ gap: 14 }}>{reportDetail.map((p) => <ReportDetailCard key={p.id || p.first} p={p} />)}</div>}
+        : <div className="col" style={{ gap: 14 }}>{filteredDetail.map((p) => <ReportDetailCard key={p.id || p.first} p={p} />)}</div>}
     </div>
   );
 };
 
 /* ---------- SETTINGS / PROFILE ---------- */
 const Settings = () => {
-  const { me, notif, setNotif, logout, pushToast } = useApp();
+  const { me, notif, setNotif, logout, pushToast, isCEO, systemConfig } = useApp();
   const [tz, setTz] = useState("Asia/Jakarta (WIB)");
   const [fname, setFname] = useState(me?.name || "");
   const [saving, setSaving] = useState(false);
+
+  // CEO approval deadline
+  const [deadlineHour, setDeadlineHour] = useState(systemConfig?.approvalDeadlineHour ?? 9);
+  const [deadlineSaving, setDeadlineSaving] = useState(false);
+  const saveDeadline = async () => {
+    setDeadlineSaving(true);
+    try {
+      await window.API.SystemConfig.update(deadlineHour);
+      pushToast("ok", "Batas approval diperbarui", `Auto-approve pukul ${String(deadlineHour).padStart(2,"0")}:00 WIB`);
+    } catch (e) { pushToast("err", "Gagal menyimpan", e.message); }
+    setDeadlineSaving(false);
+  };
 
   // change-password state
   const [curPw, setCurPw] = useState("");
@@ -560,6 +649,27 @@ const Settings = () => {
           <option>Asia/Jakarta (WIB)</option><option>Asia/Makassar (WITA)</option><option>Asia/Jayapura (WIT)</option>
         </Select>
       </Card>
+
+      {isCEO && <>
+        <SectionLabel><Icons.Clock size={13} /> Batas Waktu Approval</SectionLabel>
+        <Card>
+          <div className="t-caption dim" style={{ marginBottom: 14 }}>
+            Auto-approve akan berjalan setiap hari kerja pada jam yang dipilih (WIB). Todo yang belum direspons sebelum jam ini akan otomatis disetujui.
+          </div>
+          <div className="row gap12" style={{ alignItems: "center" }}>
+            <div style={{ flex: 1 }}>
+              <Select value={deadlineHour} onChange={(e) => setDeadlineHour(Number(e.target.value))}>
+                {[7, 8, 9, 10, 11, 12].map((h) => (
+                  <option key={h} value={h}>{String(h).padStart(2,"0")}:00 WIB</option>
+                ))}
+              </Select>
+            </div>
+            <Btn variant="accent" disabled={deadlineSaving} icon={<Icons.Check size={16} />} onClick={saveDeadline}>
+              {deadlineSaving ? "Menyimpan..." : "Simpan"}
+            </Btn>
+          </div>
+        </Card>
+      </>}
 
       <div className="hr" style={{ margin: "26px 0" }} />
       <Btn variant="danger" icon={<Icons.Logout size={16} />} onClick={logout}>Keluar / Logout</Btn>

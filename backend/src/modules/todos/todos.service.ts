@@ -11,6 +11,8 @@ import { DelegationsService } from '../delegations/delegations.service';
 import { TodoStateMachineService } from './todo-state-machine.service';
 import { TodoSessionsService } from './todo-sessions.service';
 import { CreateTodoDto } from './dto/create-todo.dto';
+import { UpdateTodoDto } from './dto/update-todo.dto';
+import { CreateTodoForMemberDto } from './dto/create-todo-for-member.dto';
 import { ApproveRejectTodoDto } from './dto/approve-reject-todo.dto';
 import { ListTodosQueryDto } from './dto/list-todos-query.dto';
 import { TodoStatus } from '../../common/enums/todo-status.enum';
@@ -18,6 +20,7 @@ import { TodoTrigger } from '../../common/enums/todo-trigger.enum';
 import { ApprovalAction } from '../../common/enums/approval-action.enum';
 import { NotificationType } from '../../common/enums/notification-type.enum';
 import { UserRole } from '../../common/enums/user-role.enum';
+import { SseService } from '../notifications/sse/sse.service';
 import {
   WeekendGuardException,
 } from '../../common/exceptions/weekend-guard.exception';
@@ -25,7 +28,9 @@ import {
   isWeekendInWIB,
   getTodayDateStringWIB,
   shouldAutoApproveNow,
+  getNextWorkingDateWIB,
 } from '../../common/utils/working-day.util';
+import { SystemConfigService } from '../system-config/system-config.service';
 
 @Injectable()
 export class TodosService {
@@ -35,6 +40,8 @@ export class TodosService {
     private readonly stateMachine: TodoStateMachineService,
     private readonly sessions: TodoSessionsService,
     private readonly events: EventEmitter2,
+    private readonly sse: SseService,
+    private readonly systemConfig: SystemConfigService,
   ) {}
 
   async create(dto: CreateTodoDto, userId: string) {
@@ -55,8 +62,9 @@ export class TodosService {
     const approvedHours = Number(existing[0]?.approved_hours ?? 0);
     const isOvertime = approvedHours + dto.estimatedHours > 8;
 
+    const deadlineHour = await this.systemConfig.getDeadlineHour();
     let initialStatus: TodoStatus;
-    if (shouldAutoApproveNow()) {
+    if (shouldAutoApproveNow(deadlineHour)) {
       initialStatus = TodoStatus.AUTO_APPROVED;
     } else if (isOvertime) {
       initialStatus = TodoStatus.PENDING_OVERTIME_APPROVAL;
@@ -102,6 +110,7 @@ export class TodosService {
           body: `A new todo "${todo.title}" is awaiting your approval.`,
         },
       });
+      this.sse.emit(approverId, { type: 'notification.new', data: {} });
     } else {
       await this.prisma.notification.create({
         data: {
@@ -125,6 +134,7 @@ export class TodosService {
     const where: any = {
       userId: requesterId,
       todoDate: whereDate,
+      deletedAt: null,
     };
 
     if (!query.includeDone) {
@@ -238,6 +248,7 @@ export class TodosService {
     });
 
     this.events.emit('dashboard.invalidate', { userId: todo.userId });
+    this.sse.emit(todo.userId, { type: 'notification.new', data: {} });
     return this.findTodoOrFail(id);
   }
 
@@ -290,6 +301,7 @@ export class TodosService {
     });
 
     this.events.emit('dashboard.invalidate', { userId: todo.userId });
+    this.sse.emit(todo.userId, { type: 'notification.new', data: {} });
     return this.findTodoOrFail(id);
   }
 
@@ -430,6 +442,168 @@ export class TodosService {
     }
 
     return count;
+  }
+
+  async softDelete(id: string, userId: string): Promise<void> {
+    const todo = await this.findTodoOrFail(id);
+    this.assertOwner(todo, userId);
+    if (todo.status !== (TodoStatus.REJECTED as PrismaTodoStatus)) {
+      throw new ConflictException(`Only rejected todos can be deleted (current: ${todo.status})`);
+    }
+    await this.prisma.todo.update({ where: { id }, data: { deletedAt: new Date() } });
+  }
+
+  async updateAndResubmit(id: string, userId: string, dto: UpdateTodoDto) {
+    const todo = await this.findTodoOrFail(id);
+    this.assertOwner(todo, userId);
+    if (todo.status !== (TodoStatus.REJECTED as PrismaTodoStatus)) {
+      throw new ConflictException(`Only rejected todos can be resubmitted (current: ${todo.status})`);
+    }
+
+    const todayStr = getTodayDateStringWIB();
+    const existing = await this.prisma.$queryRaw<{ approved_hours: number }[]>`
+      SELECT COALESCE(SUM(estimated_hours)::float, 0) AS approved_hours
+      FROM todos
+      WHERE user_id = ${userId}::uuid
+        AND todo_date = ${todayStr}::date
+        AND id != ${id}::uuid
+        AND status NOT IN ('REJECTED', 'PENDING_APPROVAL', 'PENDING_OVERTIME_APPROVAL')
+        AND deleted_at IS NULL
+    `;
+    const approvedHours = Number(existing[0]?.approved_hours ?? 0);
+    const newEst = dto.estimatedHours ?? Number(todo.estimatedHours);
+    const isOvertime = approvedHours + newEst > 8;
+    const newStatus = isOvertime ? TodoStatus.PENDING_OVERTIME_APPROVAL : TodoStatus.PENDING_APPROVAL;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.todo.update({
+        where: { id },
+        data: {
+          title: dto.title ?? todo.title,
+          description: dto.description ?? todo.description,
+          estimatedHours: newEst,
+          isOvertime,
+          status: newStatus as PrismaTodoStatus,
+          deletedAt: null,
+        },
+      });
+      await tx.todoEvent.create({
+        data: {
+          todoId: id,
+          actorUserId: userId,
+          fromStatus: TodoStatus.REJECTED as PrismaTodoStatus,
+          toStatus: newStatus as PrismaTodoStatus,
+          triggeredBy: TodoTrigger.USER,
+        },
+      });
+    });
+
+    const { userId: approverId } = await this.delegations.resolveApprover(userId);
+    await this.prisma.notification.create({
+      data: {
+        recipientUserId: approverId,
+        actorUserId: userId,
+        todoId: id,
+        type: NotificationType.TODO_PENDING_APPROVAL,
+        title: 'Todo Resubmitted',
+        body: `Todo "${dto.title ?? todo.title}" has been resubmitted for approval.`,
+      },
+    });
+    this.sse.emit(approverId, { type: 'notification.new', data: {} });
+    this.events.emit('dashboard.invalidate', { userId });
+    return this.findTodoOrFail(id);
+  }
+
+  async archiveTodo(id: string, userId: string): Promise<void> {
+    const todo = await this.findTodoOrFail(id);
+    this.assertOwner(todo, userId);
+    if (todo.status !== (TodoStatus.DONE as PrismaTodoStatus)) {
+      throw new ConflictException(`Only done todos can be archived (current: ${todo.status})`);
+    }
+    await this.prisma.todo.update({ where: { id }, data: { deletedAt: new Date() } });
+  }
+
+  async findArchived(userId: string) {
+    return this.prisma.todo.findMany({
+      where: {
+        userId,
+        status: TodoStatus.DONE as PrismaTodoStatus,
+        deletedAt: { not: null },
+      },
+      include: {
+        sessions: { where: { deletedAt: null } },
+        approvalLogs: { orderBy: { actionedAt: 'desc' }, take: 1 },
+      },
+      orderBy: { deletedAt: 'desc' },
+    });
+  }
+
+  async createForMember(dto: CreateTodoForMemberDto, ceoId: string) {
+    const member = await this.prisma.user.findFirst({ where: { id: dto.targetUserId, isActive: true } });
+    if (!member || member.role !== (UserRole.MEMBER as any)) {
+      throw new ForbiddenException('Target must be an active member');
+    }
+
+    const todayStr = getTodayDateStringWIB();
+    const todo = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.todo.create({
+        data: {
+          userId: dto.targetUserId,
+          title: dto.title,
+          description: dto.description,
+          estimatedHours: dto.estimatedHours,
+          status: TodoStatus.AUTO_APPROVED as PrismaTodoStatus,
+          isOvertime: false,
+          todoDate: new Date(todayStr),
+        },
+      });
+      await tx.todoEvent.create({
+        data: {
+          todoId: created.id,
+          actorUserId: ceoId,
+          fromStatus: null,
+          toStatus: TodoStatus.AUTO_APPROVED as PrismaTodoStatus,
+          triggeredBy: TodoTrigger.CEO,
+        },
+      });
+      return created;
+    });
+
+    await this.prisma.notification.create({
+      data: {
+        recipientUserId: dto.targetUserId,
+        actorUserId: ceoId,
+        todoId: todo.id,
+        type: NotificationType.TODO_AUTO_APPROVED,
+        title: 'Todo Dibuat CEO',
+        body: `CEO telah membuat todo "${todo.title}" untuk Anda.`,
+      },
+    });
+    this.sse.emit(dto.targetUserId, { type: 'notification.new', data: {} });
+    this.events.emit('dashboard.invalidate', { userId: dto.targetUserId });
+    return todo;
+  }
+
+  async carryOver(id: string, userId: string) {
+    const todo = await this.findTodoOrFail(id);
+    this.assertOwner(todo, userId);
+    const allowedStatuses: PrismaTodoStatus[] = [
+      TodoStatus.APPROVED as PrismaTodoStatus,
+      TodoStatus.AUTO_APPROVED as PrismaTodoStatus,
+      TodoStatus.PENDING_APPROVAL as PrismaTodoStatus,
+      TodoStatus.PENDING_OVERTIME_APPROVAL as PrismaTodoStatus,
+    ];
+    if (!allowedStatuses.includes(todo.status)) {
+      throw new ConflictException(
+        `Only approved or pending todos can be carried over (current: ${todo.status})`,
+      );
+    }
+    const nextDate = getNextWorkingDateWIB();
+    await this.prisma.todo.update({
+      where: { id },
+      data: { todoDate: nextDate },
+    });
+    return this.findTodoOrFail(id);
   }
 
   private async findTodoOrFail(id: string): Promise<Todo> {

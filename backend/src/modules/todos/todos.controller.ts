@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -10,8 +11,10 @@ import {
 } from '@nestjs/common';
 import { TodosService } from './todos.service';
 import { CreateTodoDto } from './dto/create-todo.dto';
+import { UpdateTodoDto } from './dto/update-todo.dto';
 import { ApproveRejectTodoDto } from './dto/approve-reject-todo.dto';
 import { ListTodosQueryDto } from './dto/list-todos-query.dto';
+import { CreateTodoForMemberDto } from './dto/create-todo-for-member.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -38,6 +41,52 @@ export class TodosController {
   @Get('pending-approvals')
   getPendingApprovals(@CurrentUser() user: JwtPayload) {
     return this.todosService.getPendingApprovals(user.sub);
+  }
+
+  @Get('archived')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.MEMBER)
+  findArchived(@CurrentUser() user: JwtPayload) {
+    return this.todosService.findArchived(user.sub);
+  }
+
+  @Post('for-member')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.CEO)
+  createForMember(@Body() dto: CreateTodoForMemberDto, @CurrentUser() user: JwtPayload) {
+    return this.todosService.createForMember(dto, user.sub);
+  }
+
+  @Delete(':id')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.MEMBER)
+  softDelete(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.todosService.softDelete(id, user.sub);
+  }
+
+  @Patch(':id')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.MEMBER)
+  updateAndResubmit(
+    @Param('id') id: string,
+    @Body() dto: UpdateTodoDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.todosService.updateAndResubmit(id, user.sub, dto);
+  }
+
+  @Post(':id/archive')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.MEMBER)
+  archiveTodo(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.todosService.archiveTodo(id, user.sub);
+  }
+
+  @Post(':id/carry-over')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.MEMBER)
+  carryOver(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
+    return this.todosService.carryOver(id, user.sub);
   }
 
   @Patch(':id/approve')

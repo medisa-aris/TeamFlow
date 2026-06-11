@@ -56,6 +56,7 @@ const Icons = {
   Dot: (p) => <Ic {...p} fill="currentColor" stroke="none"><circle cx="12" cy="12" r="4"/></Ic>,
   Building: (p) => <Ic {...p}><path d="M5 21V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v16M15 9h3a1 1 0 0 1 1 1v11M8 8h2M8 12h2M8 16h2"/></Ic>,
   Spinner: (p) => <Ic {...p} fill="none"><circle cx="12" cy="12" r="8.5" strokeOpacity=".25"/><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5" strokeOpacity="1"/></Ic>,
+  Archive: (p) => <Ic {...p}><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><path d="M10 12h4"/></Ic>,
 };
 
 window.Icons = Icons;
