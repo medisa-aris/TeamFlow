@@ -1,6 +1,8 @@
 import { PrismaClient, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
+const DEFAULT_APPROVAL_DEADLINE_HOUR = 9;
+
 const prisma = new PrismaClient();
 
 const SALT_ROUNDS = 10;
@@ -41,6 +43,15 @@ const users = [
 async function main() {
   console.log('🌱 Seeding database...\n');
 
+  // ── System config ──────────────────────────────────────────────
+  await prisma.systemConfig.upsert({
+    where: { id: 1 },
+    update: {},
+    create: { id: 1, approvalDeadlineHour: DEFAULT_APPROVAL_DEADLINE_HOUR },
+  });
+  console.log(`⚙️   SystemConfig seeded  (approvalDeadlineHour=${DEFAULT_APPROVAL_DEADLINE_HOUR})\n`);
+
+  // ── Users ───────────────────────────────────────────────────────
   for (const u of users) {
     const passwordHash = await bcrypt.hash(u.password, SALT_ROUNDS);
 
