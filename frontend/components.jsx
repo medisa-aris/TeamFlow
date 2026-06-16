@@ -47,6 +47,7 @@ const STATUS_META = {
   rejected: { cls: "rejected", label: "Rejected", Icon: () => <Icons.Close size={11}/> },
   queue:    { cls: "ongoing",  label: "Siap",     Icon: () => <Icons.Play size={11}/> },
   over:     { cls: "over",     label: "Overtime", Icon: () => <Icons.Warning size={12}/> },
+  deferred: { cls: "paused",   label: "Ditangguhkan", Icon: () => <Icons.Hourglass size={12}/> },
 };
 const Badge = ({ kind, label, children }) => {
   const m = STATUS_META[kind] || STATUS_META.idle;
@@ -187,6 +188,7 @@ const NAV = [
   { key: "pending",   label: "Menunggu Approval",   Icon: Icons.Clock,    roles: ["Member"], badge: "pending_member" },
   { key: "selesai",   label: "Selesai",             Icon: Icons.Archive,  roles: ["Member"] },
   { key: "approval",  label: "Approval Queue",      Icon: Icons.Approval, roles: ["CEO"], badge: "pending" },
+  { key: "teamtodo",  label: "Todo Tim",            Icon: Icons.Users3,   roles: ["CEO"] },
   { key: "laporan",   label: "Laporan Harian",      Icon: Icons.Chart,    roles: ["CEO", "Member"] },
   { key: "help",      label: "Bantuan",             Icon: Icons.Info,     roles: ["Member"] },
   { key: "users",     label: "User Management",     Icon: Icons.People,   roles: ["CEO"] },
@@ -288,7 +290,7 @@ const NOTIF_NAV = {
 };
 
 const NotifFlyout = () => {
-  const { setNotifOpen, notifications, go, markNotifRead } = useApp();
+  const { setNotifOpen, notifications, go, markNotifRead, clearAllNotifs } = useApp();
   const items = (notifications || []).slice(0, 5);
   return (
     <>
@@ -300,6 +302,15 @@ const NotifFlyout = () => {
         <div className="row" style={{ padding: "12px 14px 8px" }}>
           <div className="t-body-strong" style={{ flex: 1 }}>Notifikasi</div>
           <span className="t-caption dim2">{items.filter((n) => !n.readAt).length} baru</span>
+          {items.length > 0 && (
+            <button
+              className="t-caption"
+              style={{ marginLeft: 10, color: "#c42b1c", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+              onClick={() => { clearAllNotifs(); setNotifOpen(false); }}
+            >
+              Hapus Semua
+            </button>
+          )}
         </div>
         <div className="hr" />
         {items.length === 0 && (

@@ -228,7 +228,7 @@ const Dashboard = () => {
 
 /* ---------- MY TODO ---------- */
 const RunningTodoCard = ({ todo }) => {
-  const { elapsed, pauseTimer, startTodo, finishTodo, go } = useApp();
+  const { elapsed, pauseTimer, startTodo, finishTodo, go, setDeferDialog } = useApp();
   const live = !!todo.running;
   useTicker(live);
   const sec = elapsed(todo);
@@ -269,6 +269,9 @@ const RunningTodoCard = ({ todo }) => {
           : <Btn icon={<Icons.Play size={14} />} onClick={() => startTodo(todo.id)}>Lanjutkan</Btn>}
         <Btn variant="accent" icon={<Icons.Check size={16} />} onClick={() => finishTodo(todo.id)}>Selesai</Btn>
         <div className="spacer" />
+        <Btn variant="subtle" icon={<Icons.Hourglass size={14} />}
+             onClick={() => setDeferDialog({ id: todo.id, title: todo.title })}
+             title="Tangguhkan ke hari berikutnya" style={{ fontSize: 12 }}>Tangguhkan</Btn>
         <Btn variant="subtle" icon={<Icons.ChevronRight size={15} />} onClick={() => go("detail", todo.id)}>Detail</Btn>
       </div>
     </Card>
@@ -276,7 +279,7 @@ const RunningTodoCard = ({ todo }) => {
 };
 
 const QueueCard = ({ todo }) => {
-  const { startTodo, go, openEdit, carryOverTodo } = useApp();
+  const { startTodo, go, openEdit, carryOverTodo, setDeferDialog } = useApp();
   const rejected = todo.state === "rejected";
   return (
     <Card hover>
@@ -302,6 +305,9 @@ const QueueCard = ({ todo }) => {
                 <Btn variant="accent" icon={<Icons.Play size={14} />} onClick={() => startTodo(todo.id)}>Start</Btn>
                 <Btn icon={<Icons.ArrowRight size={14} />} onClick={() => carryOverTodo(todo.id)}
                      title="Pindahkan ke hari kerja berikutnya" style={{ fontSize: 12 }}>Teruskan ke Besok</Btn>
+                <Btn icon={<Icons.Hourglass size={13} />}
+                     onClick={() => setDeferDialog({ id: todo.id, title: todo.title })}
+                     title="Tangguhkan — tidak bisa dikerjakan hari ini" style={{ fontSize: 12 }}>Tangguhkan</Btn>
               </>}
         </div>
       </div>
@@ -310,35 +316,60 @@ const QueueCard = ({ todo }) => {
 };
 
 const MyTodo = () => {
-  const { todos, openAdd, hoursUsed, archiveTodo, go, pendingMemberCount } = useApp();
+  const { todos, openAdd, hoursUsed, archiveTodo, go, pendingMemberCount,
+          todoDate, todayDate, setTodoDate, carryOverTodo } = useApp();
   const ongoingList = todos.filter((t) => t.state === "ongoing");
   const queue = todos.filter((t) => t.state === "queue");
   const done = todos.filter((t) => t.state === "done");
-  const today = new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const deferred = todos.filter((t) => t.state === "deferred");
+  const isToday = todoDate === todayDate;
+  const dateLabel = isToday
+    ? new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+    : new Date(todoDate + "T12:00:00").toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+
   return (
     <div className="content-pad page-enter">
       <div className="row" style={{ alignItems: "flex-end", marginBottom: 18 }}>
         <div style={{ flex: 1 }}>
           <div className="t-title">My Todo</div>
-          <div className="dim" style={{ marginTop: 2 }}>{today}</div>
+          <div className="dim" style={{ marginTop: 2 }}>{dateLabel}</div>
         </div>
-        <Btn variant="accent" icon={<Icons.Plus size={16} />} onClick={openAdd}>Tambah Todo</Btn>
+        <div className="row gap12 wrap">
+          <div className="row gap8" style={{ alignItems: "center" }}>
+            <input
+              type="date"
+              className="tbx"
+              value={todoDate}
+              max={todayDate}
+              onChange={(e) => e.target.value && setTodoDate(e.target.value)}
+              style={{ width: 148, fontSize: 13 }}
+            />
+            {!isToday && (
+              <Btn size="sm" variant="subtle" onClick={() => setTodoDate(todayDate)} style={{ fontSize: 12, whiteSpace: "nowrap" }}>
+                ← Hari Ini
+              </Btn>
+            )}
+          </div>
+          {isToday && <Btn variant="accent" icon={<Icons.Plus size={16} />} onClick={openAdd}>Tambah Todo</Btn>}
+        </div>
       </div>
 
-      <Card style={{ marginBottom: 4 }}>
-        <div className="row gap16">
-          <Icons.Clock size={20} className="dim" />
-          <div style={{ flex: 1 }}>
-            <div className="row" style={{ marginBottom: 6 }}>
-              <span className="t-body-strong" style={{ flex: 1 }}>Sisa jam hari ini</span>
-              <span className="dim t-caption">{hoursUsed}/8 jam terpakai</span>
+      {isToday && (
+        <Card style={{ marginBottom: 4 }}>
+          <div className="row gap16">
+            <Icons.Clock size={20} className="dim" />
+            <div style={{ flex: 1 }}>
+              <div className="row" style={{ marginBottom: 6 }}>
+                <span className="t-body-strong" style={{ flex: 1 }}>Sisa jam hari ini</span>
+                <span className="dim t-caption">{hoursUsed}/8 jam terpakai</span>
+              </div>
+              <ProgressBar value={hoursUsed} max={8} thick variant={hoursUsed >= 8 ? "warn" : ""} />
             </div>
-            <ProgressBar value={hoursUsed} max={8} thick variant={hoursUsed >= 8 ? "warn" : ""} />
           </div>
-        </div>
-      </Card>
+        </Card>
+      )}
 
-      {pendingMemberCount > 0 && (
+      {isToday && pendingMemberCount > 0 && (
         <div className="muted-box row gap8" style={{ marginBottom: 8, cursor: "pointer" }} onClick={() => go("pending")}>
           <Icons.Hourglass size={14} style={{ color: "#c8650a" }} />
           <span className="t-caption" style={{ flex: 1 }}>
@@ -358,9 +389,37 @@ const MyTodo = () => {
         <div className="col" style={{ gap: 12 }}>{queue.map((t) => <QueueCard key={t.id} todo={t} />)}</div>
       </>}
 
-      <SectionLabel><Icons.CheckCircle size={13} /> Selesai Hari Ini ({done.length})</SectionLabel>
+      {deferred.length > 0 && <>
+        <SectionLabel><Icons.Hourglass size={13} /> Ditangguhkan ({deferred.length})</SectionLabel>
+        <div className="col" style={{ gap: 12 }}>
+          {deferred.map((t) => (
+            <Card key={t.id} hover>
+              <div className="row gap12" style={{ alignItems: "flex-start" }}>
+                <div style={{ flex: 1 }}>
+                  <div className="row gap8">
+                    <span className="t-body-strong">{t.title}</span>
+                    <Badge kind="deferred" />
+                  </div>
+                  <div className="dim t-caption" style={{ marginTop: 4 }}>Estimasi {t.est} jam</div>
+                  {t.deferReason && (
+                    <div className="muted-box mt12">
+                      <div className="t-caption dim2" style={{ fontStyle: "italic" }}>"{t.deferReason}"</div>
+                    </div>
+                  )}
+                </div>
+                <Btn icon={<Icons.ArrowRight size={14} />} onClick={() => carryOverTodo(t.id)}
+                     title="Aktifkan ulang ke hari kerja berikutnya" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
+                  Aktifkan Ulang
+                </Btn>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </>}
+
+      <SectionLabel><Icons.CheckCircle size={13} /> Selesai {isToday ? "Hari Ini" : ""} ({done.length})</SectionLabel>
       {done.length === 0
-        ? <Card><div className="dim t-caption">Belum ada todo selesai hari ini.</div></Card>
+        ? <Card><div className="dim t-caption">Belum ada todo selesai{isToday ? " hari ini" : ""}.</div></Card>
         : <Card pad={false}>
             {done.map((t, i) => (
               <div key={t.id} className="row gap12" style={{ padding: "12px 18px", borderTop: i ? "1px solid var(--divider)" : "none", alignItems: "center" }}>
@@ -368,8 +427,10 @@ const MyTodo = () => {
                 <span className="t-body-strong" style={{ flex: 1 }}>{t.title}</span>
                 <span className="dim t-caption">{t.est} jam</span>
                 <span className="dim2 t-caption" style={{ width: 110, textAlign: "right" }}>{t.range}</span>
-                <Btn size="sm" icon={<Icons.Archive size={13} />} onClick={() => archiveTodo(t.id)}
-                     style={{ marginLeft: 8 }} title="Arsipkan todo">Arsipkan</Btn>
+                {isToday && (
+                  <Btn size="sm" icon={<Icons.Archive size={13} />} onClick={() => archiveTodo(t.id)}
+                       style={{ marginLeft: 8 }} title="Arsipkan todo">Arsipkan</Btn>
+                )}
               </div>
             ))}
           </Card>}
@@ -616,7 +677,7 @@ const FAQ_ITEMS = [
   },
   {
     q: 'Apakah saya bisa melihat todo hari-hari sebelumnya?',
-    a: 'Todo yang sudah diarsipkan bisa dilihat di halaman "Selesai". Untuk laporan harian termasuk riwayat tim, lihat halaman "Laporan Harian".',
+    a: 'Ya! Di halaman My Todo terdapat filter tanggal di pojok kanan atas. Pilih tanggal lain untuk melihat todo di hari tersebut. Default-nya adalah hari ini.',
   },
 ];
 
@@ -627,14 +688,14 @@ const Help = () => {
     { n: 1, title: "Buka halaman My Todo", desc: "Klik menu My Todo di navigasi kiri." },
     { n: 2, title: 'Klik tombol "Tambah Todo"', desc: "Tombol biru di pojok kanan atas halaman My Todo." },
     { n: 3, title: "Isi Judul Todo", desc: "Masukkan judul singkat yang menggambarkan pekerjaan, misalnya: \"Desain halaman login\"." },
-    { n: 4, title: "Tulis Deskripsi (min. 20 kata)", desc: "Jelaskan secara detail apa yang akan dikerjakan, langkah-langkahnya, tools yang digunakan, dan hasil yang diharapkan. Deskripsi minimal 20 kata agar CEO bisa menilai kelayakannya." },
+    { n: 4, title: "Tulis Deskripsi (min. 10 kata)", desc: "Jelaskan secara detail apa yang akan dikerjakan, langkah-langkahnya, tools yang digunakan, dan hasil yang diharapkan. Deskripsi minimal 10 kata agar CEO bisa menilai kelayakannya." },
     { n: 5, title: "Pilih Estimasi Waktu", desc: "Pilih durasi pengerjaan: 0.5 / 1 / 1.5 / 2 jam. Pastikan total jam hari ini tidak melebihi 8 jam (kecuali izin overtime)." },
     { n: 6, title: 'Klik "Ajukan"', desc: "Todo dikirim ke CEO untuk disetujui. Kamu bisa mulai mengerjakan setelah disetujui." },
   ];
 
   const RULES = [
     { icon: Icons.Clock, color: "#c8650a", title: "Batas 8 Jam/Hari", desc: "Total estimasi todo dalam satu hari maksimal 8 jam. Lebih dari itu = Overtime, butuh approval khusus." },
-    { icon: Icons.Flag, color: "var(--accent)", title: "Deskripsi Minimal 20 Kata", desc: "Setiap todo wajib memiliki deskripsi yang jelas agar CEO dapat menilai keperluan dan urgensinya." },
+    { icon: Icons.Flag, color: "var(--accent)", title: "Deskripsi Minimal 10 Kata", desc: "Setiap todo wajib memiliki deskripsi yang jelas agar CEO dapat menilai keperluan dan urgensinya." },
     { icon: Icons.Hourglass, color: "#2b9d6b", title: "Auto-approve Sesuai Batas", desc: "Jika CEO tidak merespons sebelum batas waktu (dikonfigurasi di Settings CEO), todo otomatis disetujui." },
     { icon: Icons.Calendar, color: "#5e3d89", title: "Hanya Hari Kerja (Sen–Jum)", desc: "Pengajuan todo hanya bisa dilakukan di hari kerja. Akhir pekan ditolak otomatis oleh sistem." },
   ];

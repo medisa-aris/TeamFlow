@@ -49,6 +49,10 @@ export class NotificationsService {
     await this.prisma.notification.delete({ where: { id } });
   }
 
+  async removeAll(userId: string) {
+    await this.prisma.notification.deleteMany({ where: { recipientUserId: userId } });
+  }
+
   async pushToUser(userId: string, data: Record<string, unknown>): Promise<void> {
     this.sse.emit(userId, { data, type: 'notification.new' });
   }

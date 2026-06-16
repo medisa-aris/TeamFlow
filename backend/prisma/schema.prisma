@@ -23,6 +23,7 @@ enum TodoStatus {
   ONGOING
   PAUSED
   DONE
+  DEFERRED
 
   @@map("todo_status")
 }

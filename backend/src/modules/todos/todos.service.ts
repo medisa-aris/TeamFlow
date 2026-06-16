@@ -15,6 +15,8 @@ import { UpdateTodoDto } from './dto/update-todo.dto';
 import { CreateTodoForMemberDto } from './dto/create-todo-for-member.dto';
 import { ApproveRejectTodoDto } from './dto/approve-reject-todo.dto';
 import { ListTodosQueryDto } from './dto/list-todos-query.dto';
+import { DeferTodoDto } from './dto/defer-todo.dto';
+import { ListTeamTodosQueryDto } from './dto/list-team-todos-query.dto';
 import { TodoStatus } from '../../common/enums/todo-status.enum';
 import { TodoTrigger } from '../../common/enums/todo-trigger.enum';
 import { ApprovalAction } from '../../common/enums/approval-action.enum';
@@ -138,12 +140,36 @@ export class TodosService {
     };
 
     if (!query.includeDone) {
-      where.status = { not: TodoStatus.DONE as PrismaTodoStatus };
+      where.status = { notIn: [TodoStatus.DONE as PrismaTodoStatus] };
     }
 
     return this.prisma.todo.findMany({
       where,
       include: {
+        sessions: { where: { deletedAt: null } },
+        approvalLogs: { orderBy: { actionedAt: 'desc' }, take: 1 },
+        events: {
+          where: { toStatus: TodoStatus.DEFERRED as PrismaTodoStatus, deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async findAllForCEO(query: ListTeamTodosQueryDto) {
+    const dateStr = query.date ?? getTodayDateStringWIB();
+    const whereDate = new Date(dateStr);
+
+    const where: any = { todoDate: whereDate, deletedAt: null, user: { isActive: true } };
+    if (query.userId?.length) where.userId = { in: query.userId };
+    if (query.status?.length) where.status = { in: query.status as PrismaTodoStatus[] };
+
+    return this.prisma.todo.findMany({
+      where,
+      include: {
+        user: { select: { id: true, fullName: true, email: true } },
         sessions: { where: { deletedAt: null } },
         approvalLogs: { orderBy: { actionedAt: 'desc' }, take: 1 },
       },
@@ -584,6 +610,33 @@ export class TodosService {
     return todo;
   }
 
+  async defer(id: string, userId: string, dto: DeferTodoDto) {
+    const todo = await this.findTodoOrFail(id);
+    this.assertOwner(todo, userId);
+
+    const allowedStatuses: PrismaTodoStatus[] = [
+      TodoStatus.APPROVED as PrismaTodoStatus,
+      TodoStatus.AUTO_APPROVED as PrismaTodoStatus,
+      TodoStatus.ONGOING as PrismaTodoStatus,
+    ];
+    if (!allowedStatuses.includes(todo.status)) {
+      throw new ConflictException(
+        `Only approved or ongoing todos can be deferred (current: ${todo.status})`,
+      );
+    }
+
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      if (todo.status === (TodoStatus.ONGOING as PrismaTodoStatus)) {
+        await this.sessions.closeSession(id, now, 'pause', tx);
+      }
+      await this.stateMachine.transition(todo, TodoStatus.DEFERRED, userId, TodoTrigger.USER, dto.reason, tx);
+    });
+
+    this.events.emit('dashboard.invalidate', { userId });
+    return this.findTodoOrFail(id);
+  }
+
   async carryOver(id: string, userId: string) {
     const todo = await this.findTodoOrFail(id);
     this.assertOwner(todo, userId);
@@ -592,17 +645,22 @@ export class TodosService {
       TodoStatus.AUTO_APPROVED as PrismaTodoStatus,
       TodoStatus.PENDING_APPROVAL as PrismaTodoStatus,
       TodoStatus.PENDING_OVERTIME_APPROVAL as PrismaTodoStatus,
+      TodoStatus.DEFERRED as PrismaTodoStatus,
     ];
     if (!allowedStatuses.includes(todo.status)) {
       throw new ConflictException(
-        `Only approved or pending todos can be carried over (current: ${todo.status})`,
+        `Only approved, pending, or deferred todos can be carried over (current: ${todo.status})`,
       );
     }
     const nextDate = getNextWorkingDateWIB();
-    await this.prisma.todo.update({
-      where: { id },
-      data: { todoDate: nextDate },
-    });
+    if (todo.status === (TodoStatus.DEFERRED as PrismaTodoStatus)) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.todo.update({ where: { id }, data: { todoDate: nextDate } });
+        await this.stateMachine.transition(todo, TodoStatus.APPROVED, userId, TodoTrigger.USER, 'Diaktifkan ulang ke hari kerja berikutnya', tx);
+      });
+    } else {
+      await this.prisma.todo.update({ where: { id }, data: { todoDate: nextDate } });
+    }
     return this.findTodoOrFail(id);
   }
 

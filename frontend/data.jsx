@@ -64,6 +64,8 @@ function mapTodo(t) {
     state = "ongoing"; running = false; paused = true;
   } else if (s === "DONE") {
     state = "done"; running = false; paused = false;
+  } else if (s === "DEFERRED") {
+    state = "deferred"; running = false; paused = false;
   } else {
     state = "waiting"; running = false; paused = false;
   }
@@ -99,6 +101,9 @@ function mapTodo(t) {
   const rejectLog = (t.approvalLogs || []).find((l) => l.action === "REJECTED");
   const rejectNote = rejectLog?.reason || null;
 
+  const deferEvent = (t.events || []).find((e) => e.toStatus === "DEFERRED");
+  const deferReason = deferEvent?.note || null;
+
   const startedAt = openSession ? fmtTime(openSession.startedAt)
     : sessions.length ? fmtTime(sessions[0].startedAt) : null;
 
@@ -124,6 +129,17 @@ function mapTodo(t) {
     overtime: t.isOvertime,
     status: s,
     userId: t.userId,
+    deferReason,
+  };
+}
+
+function mapTeamTodo(t) {
+  const base = mapTodo(t);
+  return {
+    ...base,
+    userName: t.user?.fullName || "Unknown",
+    userFirst: (t.user?.fullName || "?").split(" ")[0],
+    userEmail: t.user?.email || "",
   };
 }
 
@@ -199,14 +215,16 @@ function mapReportDetail(data) {
   if (!data?.user) return null;
   const first = (data.user.fullName || "").split(" ")[0];
   const totalWorkedHours = data.summary?.totalWorkedHours || 0;
-  const items = (data.todos || [])
-    .filter((t) => ["ONGOING", "PAUSED", "DONE"].includes(t.status))
-    .map((t) => ({
-      time: fmtTime(t.createdAt) || "—",
-      task: t.title,
-      h: Number(t.estimatedHours),
-      state: t.status === "DONE" ? "done" : "ongoing",
-    }));
+  const items = (data.todos || []).map((t) => ({
+    time: fmtTime(t.createdAt) || "—",
+    task: t.title,
+    h: Number(t.estimatedHours),
+    state: t.status === "DONE" ? "done"
+         : (t.status === "ONGOING" || t.status === "PAUSED") ? "ongoing"
+         : t.status === "REJECTED" ? "rejected"
+         : t.status === "DEFERRED" ? "deferred"
+         : "queued",
+  }));
 
   const pauseItems = (data.todos || []).flatMap((t) =>
     (t.sessions || []).filter((s) => s.pausedAt).map((s) => ({
@@ -230,6 +248,6 @@ function mapReportDetail(data) {
 window.TF = {
   AV_COLORS, getAvatarColor,
   fmtHMS, fmtClock, fmtTime, fmtDate,
-  mapTodo, mapApprovalItem, mapUser,
+  mapTodo, mapTeamTodo, mapApprovalItem, mapUser,
   mapTeamHours, mapWeek7, mapReportDetail,
 };

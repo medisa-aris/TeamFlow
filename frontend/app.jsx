@@ -1,7 +1,6 @@
 /* ============================================================
    TeamFlow — App root: auth, data loading, actions, context
    ============================================================ */
-const { useState, useEffect, useRef, useCallback } = React;
 
 /* --- decode JWT payload (no signature check needed client-side) --- */
 function decodeJwt(token) {
@@ -54,6 +53,7 @@ const App = () => {
   const [notifications, setNotifications] = useState([]);
   const [reportDetail, setReportDetail] = useState([]);
   const [report, setReport] = useState([]);
+  const [teamTodos, setTeamTodos] = useState([]);
 
   /* --- routing param (e.g. todo id for detail view) --- */
   const [routeParam, setRouteParam] = useState(null);
@@ -63,6 +63,25 @@ const App = () => {
 
   /* --- notif prefs --- */
   const [notif, setNotif] = useState({ approved: true, rejected: true, reminder: false });
+
+  /* --- todo date filter (My Todo) --- */
+  const [todoDate, setTodoDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const todoDateRef = useRef(todoDate);
+  todoDateRef.current = todoDate;
+
+  /* --- auto-stop modal --- */
+  const [autoStopInfo, setAutoStopInfo] = useState(null);
+
+  /* --- defer dialog --- */
+  const [deferDialog, setDeferDialog] = useState(null);
+
+  /* --- timer notification refs (per todo-id tracking) --- */
+  const notifiedRef = useRef(new Set());
+  const autoStoppedRef = useRef(new Set());
+
+  /* --- latest todos/notif ref for the timer interval --- */
+  const timerDataRef = useRef({ todos, notif });
+  timerDataRef.current = { todos, notif };
 
   const { toasts, push: pushToast, remove: removeToast } = useToasts();
 
@@ -94,10 +113,16 @@ const App = () => {
   /* ---------- data loaders ---------- */
   const loadTodos = useCallback(async () => {
     try {
-      const today = new Date().toISOString().split("T")[0];
-      const raw = await window.API.Todos.list(today, true);
+      const raw = await window.API.Todos.list(todoDateRef.current, true);
       setTodos((raw || []).map(window.TF.mapTodo));
     } catch (e) { console.error("loadTodos", e); }
+  }, []);
+
+  const loadTeamTodos = useCallback(async (params = {}) => {
+    try {
+      const raw = await window.API.Todos.teamList(params);
+      setTeamTodos((raw || []).map(window.TF.mapTeamTodo));
+    } catch (e) { console.error("loadTeamTodos", e); }
   }, []);
 
   const loadDashboard = useCallback(async () => {
@@ -156,11 +181,7 @@ const App = () => {
           us.map((u) => window.API.Reports.user(u.id, today).then(window.TF.mapReportDetail).catch(() => null))
         );
         setReportDetail(details.filter(Boolean));
-        const reportSummary = us.map((u) => {
-          const d = details.find((x) => x?.id === u.id);
-          return { first: u.first, days: [d?.used || 0, 0, 0, 0, 0] };
-        });
-        setReport(reportSummary);
+        // Weekly summary is fetched locally inside the Laporan component per period
       } else {
         const d = await window.API.Reports.user(me.id, today).then(window.TF.mapReportDetail);
         setReportDetail(d ? [d] : []);
@@ -221,6 +242,58 @@ const App = () => {
     if (route === "selesai" && loggedIn) loadArchived();
   }, [route, loggedIn]);
 
+  /* ---------- reload todos when date filter changes --- */
+  useEffect(() => {
+    if (!loggedIn) return;
+    loadTodos();
+  }, [todoDate]);
+
+  /* ---------- F1 & F2: browser notification + auto-stop timer --- */
+  useEffect(() => {
+    if (!loggedIn) return;
+    const interval = setInterval(() => {
+      const { todos: currentTodos, notif: currentNotif } = timerDataRef.current;
+      const running = currentTodos.filter((t) => t.running);
+
+      for (const t of running) {
+        const sec = t.acc + (t.lastStart ? Math.floor((Date.now() - t.lastStart) / 1000) : 0);
+        const remaining = t.est * 3600 - sec;
+
+        /* F1: 10-min browser notification */
+        if (remaining <= 600 && remaining > 0 && !notifiedRef.current.has(t.id) && currentNotif.reminder) {
+          notifiedRef.current.add(t.id);
+          if ("Notification" in window) {
+            const body = `Task "${t.title}" tersisa ${Math.ceil(remaining / 60)} menit lagi.`;
+            if (Notification.permission === "granted") {
+              new Notification("TeamFlow – Pengingat", { body });
+            } else if (Notification.permission === "default") {
+              Notification.requestPermission().then((perm) => {
+                if (perm === "granted") new Notification("TeamFlow – Pengingat", { body });
+              });
+            }
+          }
+        }
+
+        /* F2: auto-stop when time exceeded */
+        if (remaining <= 0 && !autoStoppedRef.current.has(t.id)) {
+          autoStoppedRef.current.add(t.id);
+          const title = t.title;
+          setAutoStopInfo({ title });
+          window.API.Todos.complete(t.id)
+            .then(() => Promise.all([loadTodos(), loadDashboard()]))
+            .catch(() => {});
+        }
+      }
+
+      /* clean up notification tracking for finished todos */
+      const runningIds = new Set(running.map((t) => t.id));
+      for (const id of notifiedRef.current) {
+        if (!runningIds.has(id)) notifiedRef.current.delete(id);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [loggedIn]);
+
   /* ---------- auth actions ---------- */
   const login = async (email, pw) => {
     const data = await window.API.Auth.login(email, pw);
@@ -249,7 +322,10 @@ const App = () => {
     setMe(null);
     setTodos([]); setArchived([]); setTeam([]); setWeek([]);
     setApprovals([]); setUsers([]); setNotifications([]);
-    setReportDetail([]); setReport([]);
+    setReportDetail([]); setReport([]); setTeamTodos([]);
+    setTodoDate(new Date().toISOString().split("T")[0]);
+    notifiedRef.current.clear();
+    autoStoppedRef.current.clear();
     setRoute("dashboard");
   };
 
@@ -323,6 +399,15 @@ const App = () => {
     } catch (e) { pushToast("err", "Gagal meneruskan todo", e.message); }
   };
 
+  const deferTodo = async (id, reason) => {
+    try {
+      await window.API.Todos.defer(id, reason);
+      await loadTodos();
+      setDeferDialog(null);
+      pushToast("ok", "Todo ditangguhkan", "Task akan terlihat di bagian Ditangguhkan");
+    } catch (e) { pushToast("err", "Gagal menangguhkan todo", e.message); }
+  };
+
   const openAdd = () => setAddPanel({ mode: "add", todo: null });
   const openEdit = (todo) => setAddPanel({ mode: "edit", todo });
   const closeAdd = () => setAddPanel(null);
@@ -383,6 +468,13 @@ const App = () => {
     } catch { /* ignore */ }
   }, []);
 
+  const clearAllNotifs = useCallback(async () => {
+    try {
+      await window.API.Notifications.deleteAll();
+      setNotifications([]);
+    } catch { /* ignore */ }
+  }, []);
+
   const unreadCount = notifications.filter((n) => !n.readAt).length;
   const pendingCount = approvals.length;
   const pendingMemberCount = todos.filter((t) => t.state === "waiting" || t.state === "rejected").length;
@@ -393,6 +485,8 @@ const App = () => {
     .reduce((s, t) => s + (t.est || 0), 0);
 
   /* ---------- render ---------- */
+  const todayDate = new Date().toISOString().split("T")[0];
+
   const ctx = {
     /* auth */
     loggedIn, me, role, isCEO, login, logout,
@@ -403,6 +497,7 @@ const App = () => {
     /* data */
     todos, archived, team, week, approvals, processed,
     users, notifications, reportDetail, report, systemConfig,
+    teamTodos, loadTeamTodos,
     /* counts */
     unreadCount, pendingCount, pendingMemberCount,
     /* add panel */
@@ -411,11 +506,17 @@ const App = () => {
     notif, setNotif,
     /* routing */
     routeParam,
+    /* todo date filter */
+    todoDate, todayDate, setTodoDate,
+    /* auto-stop modal */
+    autoStopInfo, setAutoStopInfo,
+    /* defer dialog */
+    deferDialog, setDeferDialog,
     /* actions */
     startTodo, pauseTimer, finishTodo, submitTodo,
-    deleteTodo, archiveTodo, carryOverTodo,
+    deleteTodo, archiveTodo, carryOverTodo, deferTodo,
     decideApproval, saveUser, deleteUser,
-    markNotifRead, elapsed,
+    markNotifRead, clearAllNotifs, elapsed,
     /* add/edit */
     openEdit,
     /* toast */
@@ -438,6 +539,7 @@ const App = () => {
     selesai: Selesai,
     detail: TodoDetail,
     approval: ApprovalQueue,
+    teamtodo: TeamTodo,
     laporan: Laporan,
     users: UserManagement,
     settings: Settings,
@@ -460,6 +562,20 @@ const App = () => {
           </main>
         </div>
         {addPanel && <AddTodoPanel />}
+        {deferDialog && <DeferDialog />}
+        {autoStopInfo && (
+          <Dialog
+            title="Waktu Estimasi Habis"
+            icon={<Icons.Clock size={20} style={{ color: "#c8650a" }} />}
+            onClose={() => setAutoStopInfo(null)}
+            footer={<Btn variant="accent" onClick={() => setAutoStopInfo(null)}>OK</Btn>}
+          >
+            <p style={{ margin: 0, lineHeight: 1.6 }}>
+              Waktu estimasi untuk <strong>"{autoStopInfo.title}"</strong> telah habis.
+              Task telah otomatis diselesaikan.
+            </p>
+          </Dialog>
+        )}
         <ToastHost toasts={toasts} remove={removeToast} />
       </div>
     </AppContext.Provider>

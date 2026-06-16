@@ -35,7 +35,7 @@ export class DashboardService {
       LEFT JOIN vw_daily_user_hours h
         ON h.user_id = u.id AND h.todo_date = ${dateStr}::date
       LEFT JOIN todos t
-        ON t.user_id = u.id AND t.status = 'ONGOING' AND t.deleted_at IS NULL
+        ON t.user_id = u.id AND t.status = 'ONGOING' AND t.todo_date = ${dateStr}::date AND t.deleted_at IS NULL
       LEFT JOIN todo_sessions ts
         ON ts.todo_id = t.id AND ts.paused_at IS NULL AND ts.completed_at IS NULL AND ts.deleted_at IS NULL
       WHERE u.is_active = true AND u.deleted_at IS NULL

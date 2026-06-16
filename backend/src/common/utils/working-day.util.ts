@@ -32,6 +32,18 @@ export function getNextWorkingDateWIB(): Date {
   return new Date(dateStr);
 }
 
+export function getCurrentWeekMonFri(): string[] {
+  const nowWIB = toZonedTime(new Date(), WIB);
+  const dayOfWeek = nowWIB.getDay(); // 0=Sun, 1=Mon, …, 6=Sat
+  const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  const days: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    const d = new Date(nowWIB.getTime() + (i - daysFromMonday) * 86400000);
+    days.push(format(d, 'yyyy-MM-dd', { timeZone: WIB }));
+  }
+  return days;
+}
+
 export function getWorkingDaysBack(n: number): string[] {
   const days: string[] = [];
   let cursor = toZonedTime(new Date(), WIB);

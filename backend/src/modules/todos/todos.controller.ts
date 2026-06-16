@@ -15,6 +15,8 @@ import { UpdateTodoDto } from './dto/update-todo.dto';
 import { ApproveRejectTodoDto } from './dto/approve-reject-todo.dto';
 import { ListTodosQueryDto } from './dto/list-todos-query.dto';
 import { CreateTodoForMemberDto } from './dto/create-todo-for-member.dto';
+import { DeferTodoDto } from './dto/defer-todo.dto';
+import { ListTeamTodosQueryDto } from './dto/list-team-todos-query.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -41,6 +43,13 @@ export class TodosController {
   @Get('pending-approvals')
   getPendingApprovals(@CurrentUser() user: JwtPayload) {
     return this.todosService.getPendingApprovals(user.sub);
+  }
+
+  @Get('team')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.CEO)
+  findAllForCEO(@Query() query: ListTeamTodosQueryDto) {
+    return this.todosService.findAllForCEO(query);
   }
 
   @Get('archived')
@@ -87,6 +96,15 @@ export class TodosController {
   @Roles(UserRole.MEMBER)
   carryOver(@Param('id') id: string, @CurrentUser() user: JwtPayload) {
     return this.todosService.carryOver(id, user.sub);
+  }
+
+  @Post(':id/defer')
+  defer(
+    @Param('id') id: string,
+    @Body() dto: DeferTodoDto,
+    @CurrentUser() user: JwtPayload,
+  ) {
+    return this.todosService.defer(id, user.sub, dto);
   }
 
   @Patch(':id/approve')

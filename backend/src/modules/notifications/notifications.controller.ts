@@ -40,6 +40,12 @@ export class NotificationsController {
     return this.notificationsService.markRead(id, user.sub);
   }
 
+  @Delete('notifications')
+  @HttpCode(204)
+  removeAll(@CurrentUser() user: JwtPayload) {
+    return this.notificationsService.removeAll(user.sub);
+  }
+
   @Delete('notifications/:id')
   @HttpCode(204)
   remove(@Param('id') id: string, @CurrentUser() user: JwtPayload) {

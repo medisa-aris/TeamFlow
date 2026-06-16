@@ -7,4 +7,5 @@ export enum TodoStatus {
   ONGOING = 'ONGOING',
   PAUSED = 'PAUSED',
   DONE = 'DONE',
+  DEFERRED = 'DEFERRED',
 }

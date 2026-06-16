@@ -177,6 +177,15 @@ window.API = {
       });
     },
     async carryOver(id) { return apiPost(`/todos/${id}/carry-over`); },
+    async defer(id, reason) { return apiPost(`/todos/${id}/defer`, { reason }); },
+    async teamList(params = {}) {
+      const p = new URLSearchParams();
+      (params.userIds || []).forEach((id) => p.append("userId", id));
+      if (params.date) p.set("date", params.date);
+      (params.statuses || []).forEach((s) => p.append("status", s));
+      const qs = p.toString();
+      return apiGet(`/todos/team${qs ? "?" + qs : ""}`);
+    },
   },
 
   SystemConfig: {
@@ -196,6 +205,7 @@ window.API = {
       const qs = date ? `?date=${date}` : "";
       return apiGet(`/reports/user/${userId}${qs}`);
     },
+    async weekly(period = "this_week") { return apiGet(`/reports/weekly?period=${period}`); },
   },
 
   Notifications: {
@@ -204,6 +214,7 @@ window.API = {
     },
     async markRead(id) { return apiPatch(`/notifications/${id}/read`, {}); },
     async delete(id) { return apiDelete(`/notifications/${id}`); },
+    async deleteAll() { return apiDelete(`/notifications`); },
   },
 
   Users: {
@@ -219,8 +230,8 @@ window.API = {
     async update(id, data) {
       const body = {};
       if (data.name !== undefined) body.fullName = data.name;
-      if (data.isActive !== undefined) body.isActive = data.isActive;
-      else if (data.status !== undefined) body.isActive = data.status === "Aktif";
+      if (data.status !== undefined) body.isActive = data.status === "Aktif";
+      else if (data.isActive !== undefined) body.isActive = data.isActive;
       // include password only if provided (admin reset)
       if (data.password && data.password.trim()) body.password = data.password;
       return apiPatch(`/users/${id}`, body);
