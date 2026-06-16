@@ -700,6 +700,15 @@
   <!-- CDN: React 18 + Babel standalone (pinned to 7.23.2 — latest versions inject import helpers that break non-module scripts) -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script>
+    // Expose React hooks as globals before Babel processes any JSX file.
+    // Using window assignment (not const/var) so this is always safe to re-run.
+    window.useState = React.useState;
+    window.useEffect = React.useEffect;
+    window.useRef = React.useRef;
+    window.useContext = React.useContext;
+    window.useCallback = React.useCallback;
+  </script>
   <script src="https://unpkg.com/@babel/standalone@7.23.2/babel.min.js"></script>
 
   <!-- App scripts (loaded in dependency order) -->

@@ -1,7 +1,6 @@
 /* ============================================================
    TeamFlow — shared primitives & app chrome
    ============================================================ */
-var { useState, useEffect, useRef, useContext, useCallback } = React;
 const AppContext = React.createContext(null);
 const useApp = () => useContext(AppContext);
 
