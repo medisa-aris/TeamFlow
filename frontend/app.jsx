@@ -29,6 +29,12 @@ function useToasts() {
    Main App
    ============================================================ */
 const App = () => {
+  const getLocalDate = () => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().split("T")[0];
+  };
+
   /* --- auth --- */
   const [loggedIn, setLoggedIn] = useState(false);
   const [me, setMe] = useState(null);
@@ -65,7 +71,8 @@ const App = () => {
   const [notif, setNotif] = useState({ approved: true, rejected: true, reminder: false });
 
   /* --- todo date filter (My Todo) --- */
-  const [todoDate, setTodoDate] = useState(() => new Date().toISOString().split("T")[0]);
+  //const [todoDate, setTodoDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [todoDate, setTodoDate] = useState(() => getLocalDate());
   const todoDateRef = useRef(todoDate);
   todoDateRef.current = todoDate;
 
@@ -174,7 +181,8 @@ const App = () => {
   const loadReport = useCallback(async () => {
     if (!me) return;
     try {
-      const today = new Date().toISOString().split("T")[0];
+      //const today = new Date().toISOString().split("T")[0];
+      const today = getLocalDate();
       if (isCEO) {
         const us = users.length ? users : (await window.API.Users.list().then((r) => r.map(window.TF.mapUser)));
         const details = await Promise.all(
@@ -314,19 +322,44 @@ const App = () => {
   };
 
   const logout = async () => {
-    const rt = localStorage.getItem("tf_refresh");
+    try {
+      const rt = localStorage.getItem("tf_refresh");
+
+      if (rt) {
+        await window.API.Auth.logout(rt);
+      }
+    } catch (e) {
+      console.error("logout", e);
+    }
+
     window.API.SSE.disconnect();
     clearInterval(pollingRef.current);
-    await window.API.Auth.logout(rt);
+
+    // IMPORTANT
+    localStorage.removeItem("tf_access");
+    localStorage.removeItem("tf_refresh");
+    localStorage.removeItem("tf_user");
+
     setLoggedIn(false);
     setMe(null);
-    setTodos([]); setArchived([]); setTeam([]); setWeek([]);
-    setApprovals([]); setUsers([]); setNotifications([]);
-    setReportDetail([]); setReport([]); setTeamTodos([]);
-    setTodoDate(new Date().toISOString().split("T")[0]);
+
+    setTodos([]);
+    setArchived([]);
+    setTeam([]);
+    setWeek([]);
+    setApprovals([]);
+    setUsers([]);
+    setNotifications([]);
+    setReportDetail([]);
+    setReport([]);
+    setTeamTodos([]);
+
+    setTodoDate(getLocalDate());
+
     notifiedRef.current.clear();
     autoStoppedRef.current.clear();
-    setRoute("dashboard");
+
+    setRoute("/");
   };
 
   /* ---------- navigation ---------- */
@@ -430,7 +463,8 @@ const App = () => {
 
       const label = result === "approved" ? "Approved" : "Ditolak";
       setProcessed((p) => [
-        { id: item.id, userFirst: item.userFirst, text: item.title, result, at: window.TF.fmtTime(new Date().toISOString()) },
+        //{ id: item.id, userFirst: item.userFirst, text: item.title, result, at: window.TF.fmtTime(new Date().toISOString()) },
+        { id: item.id, userFirst: item.userFirst, text: item.title, result, at: window.TF.fmtTime(getLocalDate()) },
         ...p,
       ]);
       await loadApprovals();
@@ -485,7 +519,8 @@ const App = () => {
     .reduce((s, t) => s + (t.est || 0), 0);
 
   /* ---------- render ---------- */
-  const todayDate = new Date().toISOString().split("T")[0];
+  //const todayDate = new Date().toISOString().split("T")[0];
+  const todayDate = getLocalDate();
 
   const ctx = {
     /* auth */
