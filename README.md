@@ -1,6 +1,6 @@
 # TeamFlow — Sistem Manajemen Todo Tim
 
-> Aplikasi manajemen produktivitas harian berbasis approval, dibangun dengan NestJS (backend) dan React 18 (frontend). Dirancang **mobile-first** karena 90% pengguna mengakses melalui smartphone.
+> Aplikasi manajemen produktivitas harian berbasis approval, dibangun dengan NestJS (backend) dan Next.js 15 (frontend BFF). Dirancang **mobile-first** karena 90% pengguna mengakses melalui smartphone.
 
 ---
 
@@ -70,10 +70,19 @@ Anggota buat todo → CEO approve/reject → Anggota mulai timer → Selesai
 ```
 ┌─────────────────────────────────────────────────────┐
 │                   Browser / Mobile                   │
-│  React 18 (CDN) + Babel + WinUI 3 Fluent Design CSS │
-│  frontend/ (static files, no build step)            │
+│  Next.js 15 App Router (teamflow-web/)              │
+│  React Query + Zustand + Fluent Design CSS          │
+│  Tidak ada JWT di browser — HttpOnly cookies        │
 └────────────────────┬────────────────────────────────┘
-                     │ HTTP + SSE
+                     │ Cookie (tf_access, tf_refresh)
+                     ▼
+┌─────────────────────────────────────────────────────┐
+│        Next.js BFF Layer  :3000                     │
+│  /api/auth/login  → set HttpOnly cookies            │
+│  /api/proxy/*     → inject Bearer, proxy ke NestJS  │
+│  /api/sse         → streaming proxy ke NestJS       │
+└────────────────────┬────────────────────────────────┘
+                     │ Bearer token (server-to-server)
                      ▼
 ┌─────────────────────────────────────────────────────┐
 │          NestJS Backend  :3001/api/v1               │
@@ -108,12 +117,25 @@ Anggota buat todo → CEO approve/reject → Anggota mulai timer → Selesai
 | Logging | nestjs-pino + pino-pretty |
 | Rate Limiting | @nestjs/throttler |
 
-### Frontend
+### Frontend (Next.js — `teamflow-web/`)
+| Komponen | Teknologi |
+|----------|-----------|
+| Framework | Next.js 15 App Router |
+| UI Library | React 18 (JSX, tanpa TypeScript) |
+| Server State | @tanstack/react-query v5 |
+| Client State | Zustand |
+| Tema | next-themes (SSR-safe dark/light, `data-theme` attribute) |
+| Desain | WinUI 3 / Fluent Design CSS (Mica blur, reveal hover) |
+| Real-time | SSE via `/api/sse` BFF proxy + React Query invalidation |
+| Autentikasi | HttpOnly cookies (`tf_access`, `tf_refresh`) — tidak ada JWT di browser |
+| BFF proxy | `/api/proxy/[...path]` — inject Bearer header server-side |
+
+### Frontend Legacy (`frontend/`) — opsional, masih berfungsi
 | Komponen | Teknologi |
 |----------|-----------|
 | UI Library | React 18 via CDN (tanpa build step) |
 | Transpiler | Babel Standalone |
-| Desain | WinUI 3 / Fluent Design CSS (Mica blur, reveal hover) |
+| Desain | WinUI 3 / Fluent Design CSS |
 | Tema | Dark / Light (toggle) |
 | Real-time | Fetch-based SSE + polling 30 detik |
 | Penyimpanan | localStorage (`tf_access`, `tf_refresh`, `tf_user`) |
@@ -153,7 +175,37 @@ TeamFlow/
 │   ├── .env.example
 │   └── package.json
 │
-├── frontend/                       # React SPA (static, no build)
+├── teamflow-web/                   # Next.js 15 BFF frontend (frontend utama)
+│   ├── middleware.js               # Cek tf_access cookie → redirect ke /login
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── (auth)/login/       # Halaman login (publik)
+│   │   │   ├── (app)/              # Halaman terproteksi
+│   │   │   │   ├── dashboard/
+│   │   │   │   ├── mytodo/ + [id]/
+│   │   │   │   ├── pending/
+│   │   │   │   ├── approval/
+│   │   │   │   ├── teamtodo/
+│   │   │   │   ├── laporan/
+│   │   │   │   ├── selesai/
+│   │   │   │   ├── settings/
+│   │   │   │   ├── users/
+│   │   │   │   └── help/
+│   │   │   └── api/
+│   │   │       ├── auth/login/     # Set HttpOnly cookies
+│   │   │       ├── auth/logout/    # Hapus cookies
+│   │   │       ├── proxy/[...path]/ # Forward ke NestJS + inject Bearer
+│   │   │       └── sse/            # Streaming proxy SSE
+│   │   ├── components/
+│   │   │   ├── layout/             # Header, NavRail
+│   │   │   ├── ui/                 # icons.jsx, primitives.jsx
+│   │   │   └── features/           # AddTodoPanel, DeferDialog, MultiSelectDropdown
+│   │   ├── hooks/                  # useSSE, useTodoEngine, useToasts, useTicker
+│   │   ├── lib/                    # apiClient.js, utils.js, constants.js
+│   │   └── store/                  # authStore.js, uiStore.js (Zustand)
+│   └── package.json
+│
+├── frontend/                       # React SPA legacy (static, no build)
 │   ├── index.html                  # CSS Fluent + mobile + CDN scripts
 │   ├── icons.jsx                   # Semua ikon SVG Fluent
 │   ├── api.jsx                     # window.API — service layer lengkap
@@ -162,9 +214,6 @@ TeamFlow/
 │   ├── pages1.jsx                  # Login, Dashboard, My Todo, Timer
 │   ├── pages2.jsx                  # Approval, User Mgmt, Laporan, Settings
 │   └── app.jsx                     # Root: auth, polling, SSE, semua aksi
-│
-├── migrations/
-│   └── 001_init.sql                # DDL lengkap (PostgreSQL)
 │
 ├── docs/
 │   ├── teamflow-srs-v1.1.md        # Software Requirements Specification
@@ -225,14 +274,21 @@ npm run start:dev
 
 Backend berjalan di **http://localhost:3001**
 
-### 4. Jalankan frontend
+### 4. Jalankan frontend (Next.js — direkomendasikan)
 
 ```bash
 # Di terminal baru, dari root proyek
-npx serve -p 3000 frontend
+cd teamflow-web
+npm install
+npm run dev
 ```
 
 Frontend berjalan di **http://localhost:3000**
+
+> Untuk menggunakan legacy CDN frontend (opsional):
+> ```bash
+> npx serve -p 3000 frontend
+> ```
 
 ### 5. Akses aplikasi
 
