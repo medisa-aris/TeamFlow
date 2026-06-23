@@ -24,8 +24,8 @@ export async function POST(req) {
 
   const data = await nestRes.json();
   const cookieStore = await cookies();
-  const isProd = process.env.NODE_ENV === 'production';
-  const baseOpts = { httpOnly: true, secure: isProd, sameSite: 'lax', path: '/' };
+  const isSecure = process.env.COOKIE_SECURE === 'true';
+  const baseOpts = { httpOnly: true, secure: isSecure, sameSite: 'lax', path: '/' };
 
   cookieStore.set('tf_access', data.accessToken, { ...baseOpts, maxAge: 900 });
   cookieStore.set('tf_refresh', data.refreshToken, { ...baseOpts, maxAge: 7 * 24 * 3600 });

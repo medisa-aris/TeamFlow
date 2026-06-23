@@ -53,6 +53,7 @@ services:
         NEXT_PUBLIC_BASE_URL: http://localhost:3000
     environment:
       NEXTJS_INTERNAL_URL: http://backend:3001
+      COOKIE_SECURE: 'false'
     ports:
       - '3000:3000'
     depends_on:
