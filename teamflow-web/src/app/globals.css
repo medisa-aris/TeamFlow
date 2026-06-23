@@ -264,6 +264,9 @@ textarea.tbx { height: auto; padding: 8px 10px; resize: vertical; }
 .input-icon { position: relative; }
 .input-icon > svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-dim); pointer-events: none; }
 .input-icon > input.tbx { padding-left: 32px; }
+.input-icon > input.tbx.has-toggle { padding-right: 32px; }
+.input-icon .eye-toggle { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; padding: 4px; display: flex; cursor: pointer; color: var(--text-dim); }
+.input-icon .eye-toggle:hover { color: var(--text); }
 
 /* ====================================================================
    AVATAR

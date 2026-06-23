@@ -15,6 +15,7 @@ export default function LoginPage() {
 
   const [email, setEmail] = useState('');
   const [pw, setPw] = useState('');
+  const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
 
@@ -67,8 +68,13 @@ export default function LoginPage() {
         <Field label="Password">
           <div className="input-icon">
             <Icons.Lock size={15} />
-            <input className="tbx" type="password" value={pw} onChange={(e) => setPw(e.target.value)}
+            <input className="tbx has-toggle" type={showPw ? 'text' : 'password'} value={pw} onChange={(e) => setPw(e.target.value)}
                    placeholder="••••••••••" autoComplete="current-password" required />
+            <button type="button" className="eye-toggle" tabIndex={-1}
+                    onClick={() => setShowPw((v) => !v)}
+                    aria-label={showPw ? 'Sembunyikan password' : 'Tampilkan password'}>
+              {showPw ? <Icons.EyeOff size={15} /> : <Icons.Eye size={15} />}
+            </button>
           </div>
         </Field>
         {err && (

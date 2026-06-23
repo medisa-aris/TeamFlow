@@ -7,7 +7,7 @@ import { useAuthStore } from '@/store/authStore';
 import { Icons } from '@/components/ui/icons';
 import { NAV, NAV_FOOT } from '@/lib/constants';
 import { apiGet } from '@/lib/apiClient';
-import { mapTodo, mapApprovalItem } from '@/lib/utils';
+import { mapTodo } from '@/lib/utils';
 import { getLocalDate } from '@/lib/utils';
 
 function NavItem({ item, active, onClick, badgeVal }) {
@@ -42,7 +42,7 @@ export function NavRail() {
 
   const { data: approvals } = useQuery({
     queryKey: ['approvals'],
-    queryFn: () => apiGet('todos/pending-approvals').then((r) => (r || []).map(mapApprovalItem)),
+    queryFn: () => apiGet('todos/pending-approvals'),
     enabled: !!me && role === 'CEO',
   });
 

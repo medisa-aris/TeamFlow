@@ -7,8 +7,10 @@ export const useUIStore = create(
     (set) => ({
       compact: false,
       notifOpen: false,
+      userMenuOpen: false,
       toggleRail: () => set((s) => ({ compact: !s.compact })),
       setNotifOpen: (v) => set({ notifOpen: v }),
+      setUserMenuOpen: (v) => set({ userMenuOpen: v }),
     }),
     {
       name: 'tf-ui',

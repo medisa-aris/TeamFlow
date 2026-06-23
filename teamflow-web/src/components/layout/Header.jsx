@@ -1,20 +1,21 @@
 'use client';
 import { useTheme } from 'next-themes';
-import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useUIStore } from '@/store/uiStore';
 import { useAuthStore } from '@/store/authStore';
 import { Icons } from '@/components/ui/icons';
 import { HBtn, Avatar } from '@/components/ui/primitives';
 import { NotifFlyout } from '@/components/layout/NotifFlyout';
+import { UserMenuFlyout } from '@/components/layout/UserMenuFlyout';
 import { apiGet } from '@/lib/apiClient';
 
 export function Header() {
-  const router = useRouter();
   const { theme, setTheme } = useTheme();
   const toggleRail = useUIStore((s) => s.toggleRail);
   const notifOpen = useUIStore((s) => s.notifOpen);
   const setNotifOpen = useUIStore((s) => s.setNotifOpen);
+  const userMenuOpen = useUIStore((s) => s.userMenuOpen);
+  const setUserMenuOpen = useUIStore((s) => s.setUserMenuOpen);
   const me = useAuthStore((s) => s.me);
 
   const { data: notifications = [] } = useQuery({
@@ -46,7 +47,7 @@ export function Header() {
         <div
           className="row gap8"
           style={{ cursor: 'pointer', padding: '2px 6px 2px 4px', borderRadius: 6 }}
-          onClick={() => router.push('/settings')}
+          onClick={() => setUserMenuOpen(!userMenuOpen)}
           title="Profil"
         >
           <Avatar first={me?.first || '?'} size={30} />
@@ -56,6 +57,7 @@ export function Header() {
           </div>
         </div>
         {notifOpen && <NotifFlyout />}
+        {userMenuOpen && <UserMenuFlyout />}
       </div>
     </header>
   );
