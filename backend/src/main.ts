@@ -3,6 +3,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { TimeoutInterceptor } from './common/interceptors/timeout.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -18,6 +19,7 @@ async function bootstrap() {
   );
 
   app.useGlobalFilters(new AllExceptionsFilter(app.get(Logger)));
+  app.useGlobalInterceptors(new TimeoutInterceptor());
 
   app.setGlobalPrefix('api/v1');
 

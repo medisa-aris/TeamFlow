@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 const NESTJS = process.env.NEXTJS_INTERNAL_URL;
 
@@ -22,29 +23,43 @@ async function proxyRequest(req, context, attempt = 0) {
     if (text) body = text;
   }
 
-  let nestRes = await fetch(url, {
-    method,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-    body,
-  });
+  let nestRes;
+  try {
+    nestRes = await fetchWithTimeout(url, {
+      method,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body,
+    }, 8000);
+  } catch {
+    return NextResponse.json({ message: 'Upstream request timed out' }, { status: 504 });
+  }
 
   if (nestRes.status === 401 && attempt === 0) {
     const refreshToken = cookieStore.get('tf_refresh')?.value;
     if (refreshToken) {
-      const rr = await fetch(`${NESTJS}/api/v1/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      });
-      if (rr.ok) {
+      let rr;
+      try {
+        rr = await fetchWithTimeout(`${NESTJS}/api/v1/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        }, 5000);
+      } catch {
+        rr = null;
+      }
+      if (rr?.ok) {
         const { accessToken: newToken } = await rr.json();
         const isProd = process.env.NODE_ENV === 'production';
-        cookieStore.set('tf_access', newToken, { httpOnly: true, secure: isProd, sameSite: 'lax', path: '/', maxAge: 3600 });
-        nestRes = await fetch(url, {
-          method,
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${newToken}` },
-          body,
-        });
+        cookieStore.set('tf_access', newToken, { httpOnly: true, secure: isProd, sameSite: 'lax', path: '/', maxAge: 900 });
+        try {
+          nestRes = await fetchWithTimeout(url, {
+            method,
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${newToken}` },
+            body,
+          }, 8000);
+        } catch {
+          return NextResponse.json({ message: 'Upstream request timed out' }, { status: 504 });
+        }
       }
     }
     if (nestRes.status === 401) {

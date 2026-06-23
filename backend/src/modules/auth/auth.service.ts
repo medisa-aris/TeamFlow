@@ -8,6 +8,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
+import { createHash } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
@@ -73,17 +74,11 @@ export class AuthService {
   }
 
   async refresh(rawToken: string) {
-    const tokens = await this.prisma.refreshToken.findMany({
-      where: { revokedAt: null },
+    const tokenHash = this.hashRefreshToken(rawToken);
+    const matched = await this.prisma.refreshToken.findFirst({
+      where: { tokenHash, revokedAt: null, expiresAt: { gt: new Date() } },
       include: { user: true },
     });
-
-    let matched: (typeof tokens)[number] | undefined;
-    for (const t of tokens) {
-      if (t.expiresAt < new Date()) continue;
-      const ok = await bcrypt.compare(rawToken, t.tokenHash);
-      if (ok) { matched = t; break; }
-    }
 
     if (!matched) throw new UnauthorizedException('Invalid or expired refresh token');
 
@@ -113,20 +108,11 @@ export class AuthService {
   }
 
   async logout(rawToken: string): Promise<void> {
-    const tokens = await this.prisma.refreshToken.findMany({
-      where: { revokedAt: null },
+    const tokenHash = this.hashRefreshToken(rawToken);
+    await this.prisma.refreshToken.updateMany({
+      where: { tokenHash, revokedAt: null },
+      data: { revokedAt: new Date() },
     });
-
-    for (const t of tokens) {
-      const ok = await bcrypt.compare(rawToken, t.tokenHash);
-      if (ok) {
-        await this.prisma.refreshToken.update({
-          where: { id: t.id },
-          data: { revokedAt: new Date() },
-        });
-        return;
-      }
-    }
   }
 
   private signAccessToken(user: { id: string; email: string; role: string }): string {
@@ -141,9 +127,13 @@ export class AuthService {
     });
   }
 
+  private hashRefreshToken(rawToken: string): string {
+    return createHash('sha256').update(rawToken).digest('hex');
+  }
+
   private async createRefreshToken(userId: string): Promise<string> {
     const rawToken = uuidv4();
-    const tokenHash = await bcrypt.hash(rawToken, 12);
+    const tokenHash = this.hashRefreshToken(rawToken);
     const expiresAt = new Date();
     const days = parseInt(
       (this.configService.get<string>('JWT_REFRESH_EXPIRES_IN', '7d') ?? '7d').replace('d', ''),

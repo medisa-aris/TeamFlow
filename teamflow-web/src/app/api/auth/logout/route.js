@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { fetchWithTimeout } from '@/lib/fetchWithTimeout';
 
 export async function POST() {
   const cookieStore = await cookies();
@@ -7,14 +8,14 @@ export async function POST() {
 
   if (refreshToken) {
     const accessToken = cookieStore.get('tf_access')?.value;
-    await fetch(`${process.env.NEXTJS_INTERNAL_URL}/api/v1/auth/logout`, {
+    await fetchWithTimeout(`${process.env.NEXTJS_INTERNAL_URL}/api/v1/auth/logout`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       },
       body: JSON.stringify({ refreshToken }),
-    }).catch(() => {});
+    }, 5000).catch(() => {});
   }
 
   cookieStore.delete('tf_access');
