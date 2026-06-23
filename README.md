@@ -130,16 +130,6 @@ Anggota buat todo → CEO approve/reject → Anggota mulai timer → Selesai
 | Autentikasi | HttpOnly cookies (`tf_access`, `tf_refresh`) — tidak ada JWT di browser |
 | BFF proxy | `/api/proxy/[...path]` — inject Bearer header server-side |
 
-### Frontend Legacy (`frontend/`) — opsional, masih berfungsi
-| Komponen | Teknologi |
-|----------|-----------|
-| UI Library | React 18 via CDN (tanpa build step) |
-| Transpiler | Babel Standalone |
-| Desain | WinUI 3 / Fluent Design CSS |
-| Tema | Dark / Light (toggle) |
-| Real-time | Fetch-based SSE + polling 30 detik |
-| Penyimpanan | localStorage (`tf_access`, `tf_refresh`, `tf_user`) |
-
 ---
 
 ## Struktur Proyek
@@ -175,7 +165,7 @@ TeamFlow/
 │   ├── .env.example
 │   └── package.json
 │
-├── teamflow-web/                   # Next.js 15 BFF frontend (frontend utama)
+├── teamflow-web/                   # Next.js 15 BFF frontend (default)
 │   ├── middleware.js               # Cek tf_access cookie → redirect ke /login
 │   ├── src/
 │   │   ├── app/
@@ -205,7 +195,7 @@ TeamFlow/
 │   │   └── store/                  # authStore.js, uiStore.js (Zustand)
 │   └── package.json
 │
-├── frontend/                       # React SPA legacy (static, no build)
+├── frontend/                       # React SPA legacy (archived, tidak digunakan)
 │   ├── index.html                  # CSS Fluent + mobile + CDN scripts
 │   ├── icons.jsx                   # Semua ikon SVG Fluent
 │   ├── api.jsx                     # window.API — service layer lengkap
@@ -274,7 +264,7 @@ npm run start:dev
 
 Backend berjalan di **http://localhost:3001**
 
-### 4. Jalankan frontend (Next.js — direkomendasikan)
+### 4. Jalankan frontend
 
 ```bash
 # Di terminal baru, dari root proyek
@@ -284,11 +274,6 @@ npm run dev
 ```
 
 Frontend berjalan di **http://localhost:3000**
-
-> Untuk menggunakan legacy CDN frontend (opsional):
-> ```bash
-> npx serve -p 3000 frontend
-> ```
 
 ### 5. Akses aplikasi
 

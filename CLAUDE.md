@@ -27,18 +27,15 @@ cd teamflow-web
 cp .env.local.example .env.local   # or set NEXTJS_INTERNAL_URL=http://localhost:3001
 npm install
 npm run dev                        # http://localhost:3000
-
-# Legacy CDN frontend (optional, still works)
-npx serve -p 3000 frontend
 ```
 
 ### Full Docker stack
 
 ```bash
-# Build and run everything (backend + postgres + redis)
+# Build and run everything (backend + frontend + postgres + redis)
 docker-compose up --build
-# Next.js frontend (separate — no container yet)
-cd teamflow-web && npm run dev
+# frontend available at http://localhost:3000
+# backend  available at http://localhost:3001
 ```
 
 ### JWT key generation
@@ -58,8 +55,7 @@ cat public.key  | base64 -w 0   # → JWT_PUBLIC_KEY
 ## Architecture
 
 ```
-frontend/            React 18 via CDN + Babel standalone (legacy, no build step)
-teamflow-web/        Next.js 15 App Router (current frontend — BFF pattern)
+teamflow-web/        Next.js 15 App Router (default frontend — BFF pattern)
   src/
     app/
       (auth)/login/  Login page (public)
@@ -104,7 +100,7 @@ backend/src/
 - **Overtime** — Creating a todo that pushes daily total > 8 h lands it in `PENDING_OVERTIME_APPROVAL` instead of `PENDING_APPROVAL`. Overtime todos cannot be auto-approved.
 - **Auto-approve** — BullMQ scheduler enqueues a delayed job per todo on creation (fires at 09:00 WIB). The `approval_deadline_hour` in `system_config` row (id=1) is the source of truth; seed ensures the row exists.
 - **Delegation** — `ApprovalDelegation` is requestor-scoped: CEO delegates approval of member X's todos to delegate Y. `delegations.service.ts#resolveApprover()` and `#canApprove()` enforce this.
-- **SSE transport** — The generic proxy buffers the response body, so SSE uses a dedicated `/api/sse` route that streams `upstream.body` directly. The legacy CDN frontend used `fetch` + `ReadableStream.getReader()` with a manual Bearer header.
+- **SSE transport** — The generic proxy buffers the response body, so SSE uses a dedicated `/api/sse` route that streams `upstream.body` directly to the browser.
 - **Soft deletes** — All main models have `deletedAt`; Prisma middleware filters these out globally.
 - **Refresh tokens** — Stored hashed in `RefreshToken` table (not Redis), supporting revocation. Rotated on every `/auth/refresh`.
 
@@ -163,26 +159,11 @@ Enums: `UserRole`, `TodoStatus`, `TodoTrigger`, `ApprovalAction`, `NotificationT
 | `hooks/useToasts.js` | Toast context provider + `useToasts()` hook |
 | `hooks/useTicker.js` | 1 s interval that forces re-render (for live timers) |
 
-### Legacy CDN frontend (`frontend/`)
-
-| File | Contents |
-|------|----------|
-| `index.html` | All Fluent/WinUI3 CSS + mobile overrides + CDN `<script>` tags |
-| `icons.jsx` | SVG icon components + `Spinner` |
-| `api.jsx` | `window.API` — Auth, Todos, Dashboard, Reports, Notifications, Users, SSE |
-| `data.jsx` | `window.TF` — formatters (`fmtHMS`, `fmtClock`) + mappers for API responses |
-| `components.jsx` | `AppContext`, atom components (Card, Btn, Badge…), NavRail, Header, NotifFlyout |
-| `pages1.jsx` | LoginPage, Dashboard, MyTodo, RunningTodoCard, QueueCard, TodoDetail |
-| `pages2.jsx` | AddTodoPanel, ApprovalQueue, UserManagement, Laporan, Settings |
-| `app.jsx` | App root: session restore, login/logout, data loaders, polling, SSE, all actions |
-
-Global state in the legacy frontend lives on `AppContext` in `components.jsx`; all mutations flow down via context.
-
 ---
 
 ## Conventions
 
-- **Language** — Backend: TypeScript strict. Next.js frontend: JSX (no TypeScript). Legacy frontend: JSX with Babel standalone (no types).
+- **Language** — Backend: TypeScript strict. Next.js frontend (`teamflow-web/`): JSX (no TypeScript).
 - **API prefix** — All routes under `/api/v1`.
 - **Auth** — `JwtAuthGuard` is global (applied in `app.module.ts`). Use `@Public()` decorator to opt out. Role-based access uses `@Roles(UserRole.CEO)` + `RolesGuard`.
 - **Error format** — `AllExceptionsFilter` normalises all errors to `{ statusCode, message, error, path, timestamp }`.
